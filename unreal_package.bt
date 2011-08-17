@@ -185,7 +185,7 @@ typedef struct {
 typedef struct {
     FName class_package;
     FName class_name;
-    uint32 package;
+    int32 package;
     FName object_name;
 } Import;
 
@@ -220,6 +220,12 @@ typedef struct {
         byte b;
     }
 } ArrayIndex;
+
+typedef struct {
+    int32 pitch;
+    int32 yaw;
+    int32 roll;
+} Rotator;
 
 typedef struct {
     FName name;
@@ -258,11 +264,13 @@ typedef struct {
     case 0x0A: 
         if (FNameRead(struct_name) == "Vector")
             Vector value;
+        else if (FNameRead(struct_name) == "Rotator")
+            Rotator value;
         else
             char value[_size];
         break; // Struct
     case 0x0B: char value[_size]; break; // Vector
-    case 0x0C: char value[_size]; break; // Rotator
+    case 0x0C: Rotator value; break; // Rotator
     case 0x0D: char value[_size]; break; // Str
     case 0x0E: char value[_size]; break; // Map
     case 0x0F: char value[_size]; break; // FixedArray
@@ -468,6 +476,76 @@ typedef struct {
         ReachSpec data[_size] <optimize=false>; 
 } ReachSpecArray;
 
+typedef struct {
+    uint32 unknown;
+    uint32 offset_size;
+    uint16 vertex_max;
+    uint16 triangle_count;
+    uint16 triangle_max;
+} StaticMeshSurf;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        StaticMeshSurf data[_size]; 
+} StaticMeshSurfArray;
+
+typedef struct {
+    Vector point;
+    Vector normal;
+} SMeshVertex;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        SMeshVertex data[_size]; 
+} SMeshVertexArray;
+
+typedef struct {
+    byte b, g, r, a;
+} Color;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        Color data[_size]; 
+} ColorArray;
+
+typedef struct {
+    float u;
+    float v;
+} SMeshCoord;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        SMeshCoord data[_size]; 
+} SMeshCoordArray;
+
+typedef struct {
+    SMeshCoordArray elements;
+    uint32 unknown;
+    uint32 unknown;
+} SMeshCoords;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        SMeshCoords data[_size] <optimize=false>;
+} SMeshCoordsArray;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        uint16 data[_size]; 
+} uint16Array;
+
 typedef struct (Export &e) {
     if (e.flags.flags & RF_HasStack) {
         Index node;
@@ -513,6 +591,22 @@ typedef struct (Export &e) {
         Index shader_len;
         char shader[IndexReadInt(shader_len)];
         char more_stuff[12];
+    } else if (FClassRead(e.class) == "Core.Class'StaticMesh'") {
+        Box bounding_box;
+        Sphere bounding_sphere;
+        StaticMeshSurfArray surfaces;
+        Box another_bounding_box;
+        SMeshVertexArray vertexes;
+        uint32 unknown;
+        ColorArray vertex_colors_1;
+        uint32 unknown;
+        ColorArray vertex_colors_2;
+        uint32 unknown;
+        SMeshCoordsArray texture_coords;
+        uint16Array vertex_indices_1;
+        uint32 unknown;
+        uint16Array vertex_indices_2;
+        uint32 unknown;
     }
 
 
