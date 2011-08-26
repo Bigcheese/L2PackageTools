@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "l2p/Package.h"
+#include "l2p/UObject.h"
 
 #include <iostream>
 
@@ -23,6 +24,16 @@ int main(int argc, char *argv[]) {
   }
 
   l2p::Package *p = l2p::Package::GetPackage("22_22");
+  std::vector<std::shared_ptr<l2p::UModel>> models;
+  p->GetObjects("Model", models);
+
+  std::shared_ptr<l2p::UModel> main = models.front();
+  for (auto i = models.begin(), e = models.end(); i != e; ++i) {
+    if ((*i)->nodes.size() > main->nodes.size())
+      main = *i;
+  }
+
+  std::shared_ptr<l2p::UObject> t = main->surfaces.front().material;
 
   return 0;
 }

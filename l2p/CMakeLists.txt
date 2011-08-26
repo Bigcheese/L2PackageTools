@@ -11,6 +11,8 @@ link_directories(${Boost_LIBRARY_DIRS})
 add_library(l2p STATIC
   Package.h
   Package.cpp
+  UObject.h
+  UObject.cpp
   )
 
 target_link_libraries(l2p

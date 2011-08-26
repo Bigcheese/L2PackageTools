@@ -11,8 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Package.h"
-#include "PackedEndian.h"
+#include "l2p/Package.h"
+#include "l2p/PackedEndian.h"
+#include "l2p/UObject.h"
 
 #include "boost/filesystem.hpp"
 
@@ -93,7 +94,11 @@ public:
       // Get key from version.
       switch (archive_version) {
       case 111: key = 0xAC; break;
-      case 121: key = 0x89; break;
+      case 121: {
+          uint8_t val = orig_streambuf.sgetc();
+          key = val ^ 0xC1;
+          break;
+        }
       default:
         buffer.resize(0);
         return;
@@ -307,7 +312,7 @@ Package *Package::GetPackage(StringRef name) {
       // Load the package.
       try {
         std::shared_ptr<Package> p(
-          new Package(path.string(), *GNames.insert(name).first));
+          new Package(path.string(), Name::make(*GNames.insert(name).first)));
         GPackages.insert(std::make_pair(name, p));
         return p.get();
       } catch (const std::runtime_error &) {
@@ -356,7 +361,7 @@ Package::Package(StringRef path, Name name)
   for (int32_t i = 0; i < header.name_count; ++i) {
     NameEntry ne;
     *this >> ne;
-    name_map.push_back(*GNames.insert(std::move(ne.name)).first);
+    name_map.push_back(Name::make(*GNames.insert(std::move(ne.name)).first));
   }
   input->seekg(header.import_offset);
   for (int32_t i = 0; i < header.import_count; ++i) {
@@ -370,4 +375,67 @@ Package::Package(StringRef path, Name name)
     *this >> e;
     export_table.push_back(std::move(e));
   }
+}
+
+std::shared_ptr<UObject> Package::GetObject(int index) {
+  assert(index != 0 && "Index must be non-zero!");
+
+  if (index < 0) {
+    index = -index - 1;
+    if (index >= import_table.size())
+      throw std::runtime_error("Invalid index");
+    Import &import = import_table[index];
+    if (import.package == 0)
+      throw std::runtime_error("Invalid package?");
+
+    // Find the name of the package this import is in.
+    Import *package_import = &import;
+    do {
+      if (-package_import->package > import_table.size())
+        throw std::runtime_error("Invalid package?");
+      package_import = &import_table[-package_import->package - 1];
+    } while (package_import->package != 0);
+    // package_import is now the import entry for the physical package.
+    Package *target_package = Package::GetPackage(package_import->object_name);
+    return target_package->GetObject(import.object_name);
+  }
+
+  if (index > export_table.size())
+    throw std::runtime_error("Invalid index");
+  return DeserializeExport(export_table[index - 1]);
+}
+
+std::shared_ptr<UObject> Package::GetObject(Name name) {
+  for (auto i = export_table.begin(), e = export_table.end(); i != e; ++i) {
+    if (i->name == name)
+      return DeserializeExport(*i);
+  }
+  return nullptr;
+}
+
+std::shared_ptr<UObject> Package::DeserializeExport(Export &e) {
+  if (e.object)
+    return e.object;
+
+  Name class_name = GetObjectName(e.class_);
+
+  std::shared_ptr<UObject> ret(nullptr);
+  if (class_name == "Model") {
+    ret.reset(new UModel);
+  } else if (class_name == "TerrainInfo") {
+    ret.reset(new ATerrainInfo);
+  } else {
+    // Unknown, but it must be a child of UObject, so use that.
+    ret.reset(new UObject);
+  }
+  if (ret) {
+    ret->flags = e.flags;
+    ret->name = e.name;
+    ret->package = this;
+    if (e.size > 0)
+      input->seekg(std::istream::off_type(e.offset));
+    *this >> *ret;
+  }
+  e.object = ret;
+  return e.object;
 }

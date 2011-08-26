@@ -14,9 +14,10 @@
 #ifndef L2PACKAGE_PACKAGE_H
 #define L2PACKAGE_PACKAGE_H
 
-#include "StringRef.h"
+#include "l2p/StringRef.h"
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <streambuf>
 #include <string>
@@ -33,19 +34,23 @@ using std::int16_t;
 using std::uint8_t;
 
 struct Name : public StringRef {
-  // MSVS 2010 parses this, but doesn't do anything with it :(.
-  // using StringRef::StringRef;
-
   Name() : StringRef() {}
-  Name(const char *Str) : StringRef(Str) {}
-  Name(const char *data, size_t length) : StringRef(data, length) {}
-  Name(const std::string &Str) : StringRef(Str) {}
 
   bool operator ==(const Name &other) {
     // A Name always points to a string in the global name table. Because of
     // this we can just compare starting pointers.
     return data() == other.data();
   }
+
+  static Name make(const std::string &str) {
+    StringRef sr(str);
+    Name n = sr;
+    return n;
+  }
+
+private:
+  Name(const StringRef &sr)
+    : StringRef(sr) {}
 };
 
 struct Index {
@@ -63,6 +68,8 @@ struct Import {
   Name object_name;
 };
 
+class UObject;
+
 struct Export {
   Index class_;
   Index super;
@@ -71,6 +78,8 @@ struct Export {
   uint32_t flags;
   Index size;
   Index offset;
+
+  std::shared_ptr<UObject> object;
 };
 
 struct GUID {
@@ -113,9 +122,38 @@ public:
     *input >> c;
     return *this;
   }
+  Package &operator >>(float &f) {
+    input->read(reinterpret_cast<char*>(&f), sizeof(f));
+    return *this;
+  }
 
   operator std::istream &() {
     return *input;
+  }
+
+  std::shared_ptr<UObject> GetObject(int index);
+  std::shared_ptr<UObject> GetObject(Name name);
+
+  Name GetObjectName(int index) {
+    assert(index != 0 && "Invalid index!");
+    if (index < 0)
+      return import_table[-index - 1].object_name;
+    else
+      return export_table[index - 1].name;
+  }
+
+  template<class ObjT>
+  void GetObjects(StringRef class_name, std::vector<std::shared_ptr<ObjT>> &result) {
+    auto nitter = GNames.find(class_name);
+    if (nitter == GNames.end())
+      return;
+    Name n = Name::make(*nitter);
+
+    for (auto i = export_table.begin(), e = export_table.end(); i != e; ++i) {
+      Name cn = GetObjectName(i->class_);
+      if (cn == n)
+        result.push_back(std::dynamic_pointer_cast<ObjT>(DeserializeExport(*i)));
+    }
   }
 
   //! Initalize and verify the root Lineage II path.
@@ -128,6 +166,8 @@ public:
 
 private:
   Package(StringRef path, Name name);
+
+  std::shared_ptr<UObject> DeserializeExport(Export &e);
 
   //! The list of streambuf filters leading up to the input. input_chain.front()
   //! returns the same value as input.rdbuf().
