@@ -4,12 +4,12 @@ Filename:    TutorialApplication.h
 -----------------------------------------------------------------------------
 
 This source file is part of the
-   ___                 __    __ _ _    _ 
+   ___                 __    __ _ _    _
   /___\__ _ _ __ ___  / / /\ \ (_) | _(_)
  //  // _` | '__/ _ \ \ \/  \/ / | |/ / |
 / \_// (_| | | |  __/  \  /\  /| |   <| |
 \___/ \__, |_|  \___|   \/  \/ |_|_|\_\_|
-      |___/                              
+      |___/
       Tutorial Framework
       http://www.ogre3d.org/tikiwiki/
 -----------------------------------------------------------------------------
@@ -18,15 +18,20 @@ This source file is part of the
 #define __TutorialApplication_h_
 
 #include "BaseApplication.h"
+#include "L2Package.h"
 
 class TutorialApplication : public BaseApplication
 {
 public:
-    TutorialApplication(void);
-    virtual ~TutorialApplication(void);
+  TutorialApplication(void);
+  virtual ~TutorialApplication(void);
 
 protected:
-    virtual void createScene(void);
+  void loadMap(L2Package::StringRef path);
+  virtual void createScene(void);
+  virtual bool mousePressed(const OIS::MouseEvent &arg, OIS::MouseButtonID id);
+
+  Ogre::SceneNode *mUnrealCordNode;
 };
 
 #endif // #ifndef __TutorialApplication_h_

@@ -15,358 +15,8 @@ This source file is part of the
 -----------------------------------------------------------------------------
 */
 #include "TutorialApplication.h"
-#include "PackedEndian.h"
 
-#include <array>
-#include <cstdint>
-#include <exception>
-#include <fstream>
-#include <streambuf>
 #include <vector>
-
-namespace L2Package {
-using std::uint32_t;
-using std::int32_t;
-using std::int16_t;
-using std::uint8_t;
-
-class l2_decrypt_streambuf : public std::basic_streambuf<char>
-{
-public:
-  typedef std::basic_streambuf<char>::traits_type traits_type;
-  typedef traits_type::int_type int_type;
-  typedef traits_type::pos_type pos_type;
-  typedef traits_type::off_type off_type;
-
-  explicit l2_decrypt_streambuf(std::basic_streambuf<char> &orig)
-    : orig_streambuf(orig)
-    , buffer(BUFF_SIZE)
-    , pack(nullptr) {
-      // Setup the input buffer so that underflow is called on the first read.
-      setg(0, 0, 0);
-
-
-      std::array<char, 22> target_header = {
-        0x4C, 0x00, 0x69, 0x00, 0x6E, 0x00, 0x65, 0x00,
-        0x61, 0x00, 0x67, 0x00, 0x65, 0x00, 0x32, 0x00,
-        0x56, 0x00, 0x65, 0x00, 0x72, 0x00
-      };
-      // Read the version from orig_streambuf.
-      std::array<char, 22> header_buf;
-      std::array<char, 6>  version_buf;
-      orig_streambuf.sgetn(header_buf.data(), 22);
-      orig_streambuf.sgetn(version_buf.data(), 6);
-      if (header_buf != target_header) {
-        buffer.resize(0);
-        return;
-      }
-
-      // Get the version as an integer.
-      std::string ver;
-      ver += version_buf[0];
-      ver += version_buf[2];
-      ver += version_buf[4];
-
-      std::istringstream out(ver);
-      int archive_version;
-      out >> archive_version;
-      if (!out) {
-        buffer.resize(0);
-        return;
-      }
-
-      // Get key from version.
-      switch (archive_version) {
-      case 111: key = 0xAC; break;
-      case 121: key = 0x89; break;
-      default:
-        buffer.resize(0);
-        return;
-      }
-
-      // Get the total file size so we know when to return EOF.
-      file_size = orig_streambuf.pubseekoff(0, std::ios::end, std::ios::in);
-      orig_streambuf.pubseekoff(28, std::ios::beg, std::ios::in);
-      if (file_size == pos_type(off_type(-1))) {
-        buffer.resize(0);
-        return;
-      }
-    }
-
-  int_type l2_decrypt_streambuf::underflow() {
-    if (buffer.size() == 0)
-      return traits_type::eof();
-
-    // Read up to buffer.size() from the origial streambuf.
-    std::streamsize len = orig_streambuf.sgetn(&buffer.front(), buffer.size());
-    if (len <= 20)
-      return traits_type::eof();
-
-    // Check to see if we read up to the end.
-    pos_type loc = orig_streambuf.pubseekoff(0, std::ios::cur, std::ios::in);
-    if (loc > (file_size - off_type(20)))
-      loc -= (file_size - off_type(20));
-    else
-      loc = 0;
-
-    // Set our buffer.
-    setg(&buffer.front(), &buffer.front(), &buffer.front() + (len - loc));
-
-    // Decrypt the buffer.
-    for (auto i = buffer.begin(), e = buffer.end(); i != e; ++i) {
-      *i ^= key;
-    }
-
-    return traits_type::not_eof(buffer.front());
-  }
-
-  pos_type l2_decrypt_streambuf::seekpos(pos_type sp, std::ios::openmode which) {
-    // Only change input pos.
-    if (~which & std::ios::in)
-      return pos_type(off_type(-1));
-
-    // Check bounds.
-    if (sp > file_size - off_type(28 + 20))
-      return pos_type(off_type(-1));
-
-    // Seek the underlying buffer.
-    pos_type pos = orig_streambuf.pubseekpos(sp + off_type(28), which);
-    if (pos == pos_type(off_type(-1)))
-      return pos;
-
-    // Update the decrypted buffer.
-    // TODO: Make this more efficent in the case where sp is within the current
-    //       buffer.
-    underflow();
-
-    return pos - off_type(28);
-  }
-
-private:
-  static const size_t BUFF_SIZE = 4096;
-  std::basic_streambuf<char> &orig_streambuf;
-  std::vector<char> buffer;
-  uint8_t key;
-  pos_type file_size;
-};
-
-template<class ExtractAsT, class StoreToT>
-struct ExtractHelper {
-  StoreToT &storeTo;
-  ExtractHelper(StoreToT &st) : storeTo(st) {}
-};
-
-template<class ExtractAsT, class StoreToT>
-std::istream &operator >>(std::istream &is, ExtractHelper<ExtractAsT, StoreToT> &eh) {
-  ExtractAsT value;
-  is >> value;
-  eh.storeTo = value;
-  return is;
-}
-
-// This exists for template argument deduction.
-template<class ExtractAsT, class StoreToT>
-ExtractHelper<ExtractAsT, StoreToT> Extract(StoreToT &st) {
-  return ExtractHelper<ExtractAsT, StoreToT>(st);
-}
-
-template<class ExtractSizeAsT, class ExtractElementAsT, class StoreToT>
-struct ExtractArrayHelper {
-  StoreToT &storeTo;
-  ExtractArrayHelper(StoreToT &st) : storeTo(st) {}
-};
-
-template<class ExtractSizeAsT, class ExtractElementAsT, class StoreToT>
-std::istream &operator >>(std::istream &is, ExtractArrayHelper< ExtractSizeAsT
-                                                              , ExtractElementAsT
-                                                              , StoreToT> &eah) {
-  ExtractSizeAsT size_val;
-  is >> size_val;
-  int32_t size = size_val;
-  eah.storeTo.reserve(size);
-  for (int32_t i = 0; i < size; ++i) {
-    ExtractElementAsT element;
-    is >> element;
-    eah.storeTo.push_back(element);
-  }
-  return is;
-}
-
-template<class ExtractSizeAsT, class ExtractElementAsT, class StoreToT>
-ExtractArrayHelper<ExtractSizeAsT, ExtractElementAsT, StoreToT> ExtractArray(StoreToT &st) {
-  return ExtractArrayHelper<ExtractSizeAsT, ExtractElementAsT, StoreToT>(st);
-}
-
-struct GUID {
-  uint32_t A, B, C, D;
-  friend std::istream &operator >>(std::istream &is, GUID &guid) {
-    is >> Extract<ulittle32_t>(guid.A)
-       >> Extract<ulittle32_t>(guid.B)
-       >> Extract<ulittle32_t>(guid.C)
-       >> Extract<ulittle32_t>(guid.D);
-    return is;
-  }
-};
-
-struct GenerationInfo {
-  int32_t export_count;
-  int32_t name_count;
-  friend std::istream &operator >>(std::istream &is, GenerationInfo &g) {
-    is >> Extract<little32_t>(g.export_count)
-       >> Extract<little32_t>(g.name_count);
-    return is;
-  }
-};
-
-struct Header {
-  int32_t tag;
-  int16_t file_version;
-  int16_t licensee_mode;
-  uint32_t package_flags;
-  int32_t name_count;
-  int32_t name_offset;
-  int32_t export_count;
-  int32_t export_offset;
-  int32_t import_count;
-  int32_t import_offset;
-  GUID guid;
-  int32_t generation_count;
-  std::vector<GenerationInfo> generations;
-  friend std::istream &operator >>(std::istream &is, Header &h) {
-    is >> Extract<little32_t>(h.tag)
-       >> Extract<little16_t>(h.file_version)
-       >> Extract<little16_t>(h.licensee_mode)
-       >> Extract<ulittle32_t>(h.package_flags)
-       >> Extract<little32_t>(h.name_count)
-       >> Extract<little32_t>(h.name_offset)
-       >> Extract<little32_t>(h.export_count)
-       >> Extract<little32_t>(h.export_offset)
-       >> Extract<little32_t>(h.import_count)
-       >> Extract<little32_t>(h.import_offset)
-       >> h.guid
-       >> Extract<little32_t>(h.generation_count);
-    for (int i = 0; i < h.generation_count; ++i) {
-      GenerationInfo gi;
-      is >> gi;
-      h.generations.push_back(std::move(gi));
-    }
-    return is;
-  }
-};
-
-struct Index {
-  int32_t value;
-
-  operator int32_t() const {
-    return value;
-  }
-
-  friend std::istream &operator >>(std::istream &is, Index &i) {
-    uint8_t b;
-    is >> Extract<ulittle8_t>(b);
-    int neg = b & (1 << 7);
-    int index = b & 0x3f;
-
-    if (b & (1 << 6)) {
-        int shift = 6;
-        int data;
-        int j = 1;
-        do {
-            is >> Extract<ulittle8_t>(b);
-            data = b & 0x7f;
-            data <<= shift;
-            index |= data;
-            shift += 7;
-        } while ((b & (1 << 7)) && (shift < 32));
-    }
-
-    if (neg)
-        index = -index;
-
-    i.value = index;
-    return is;
-  }
-};
-
-struct NameEntry {
-  std::string name;
-  uint32_t flags;
-
-  friend std::istream &operator >>(std::istream &is, NameEntry &ne) {
-    is >> ExtractArray<Index, char>(ne.name);
-    is >> Extract<ulittle32_t>(ne.flags);
-    return is;
-  }
-};
-
-struct Export {
-  Index class_;
-  Index super;
-  int32_t package;
-  Index name;
-  uint32_t flags;
-  Index size;
-  Index offset;
-
-  friend std::istream &operator >>(std::istream &is, Export &e) {
-    is >> e.class_
-       >> e.super
-       >> Extract<little32_t>(e.package)
-       >> e.name
-       >> Extract<ulittle32_t>(e.flags)
-       >> e.size;
-    if (e.size > 0)
-      is >> e.offset;
-    return is;
-  }
-};
-
-struct Import {
-  Index class_package;
-  Index class_name;
-  int32_t package;
-  Index object_name;
-
-  friend std::istream &operator >>(std::istream &is, Import &i) {
-    is >> i.class_package
-       >> i.class_name
-       >> Extract<little32_t>(i.package)
-       >> i.object_name;
-    return is;
-  }
-};
-
-struct Package {
-  Header header;
-  std::vector<NameEntry> names;
-  std::vector<Export> exports;
-  std::vector<Import> imports;
-};
-
-std::istream &operator >>(std::istream &is, Package &p) {
-  is >> p.header;
-  is.seekg(p.header.name_offset);
-  for (int32_t i = 0; i < p.header.name_count; ++i) {
-    NameEntry ne;
-    is >> ne;
-    p.names.push_back(ne);
-  }
-  is.seekg(p.header.export_offset);
-  for (int32_t i = 0; i < p.header.export_count; ++i) {
-    Export e;
-    is >> e;
-    p.exports.push_back(e);
-  }
-  is.seekg(p.header.import_offset);
-  for (int32_t i = 0; i < p.header.import_count; ++i) {
-    Import im;
-    is >> im;
-    p.imports.push_back(im);
-  }
-  return is;
-}
-
-}
 
 //-------------------------------------------------------------------------------------
 TutorialApplication::TutorialApplication(void)
@@ -377,25 +27,285 @@ TutorialApplication::~TutorialApplication(void)
 {
 }
 
-//-------------------------------------------------------------------------------------
-void TutorialApplication::createScene(void)
-{
-  /*Ogre::MeshPtr mesh = Ogre::MeshManager::getSingleton().createManual("blah", "General");
-  Ogre::SubMesh *subMesh = mesh->createSubMesh();*/
+bool ignoreNode(L2Package::UModel *m, L2Package::BSPNode &n, L2Package::BSPSurface &s) {
+  L2Package::Archive &ar = *m->archive;
+  for (int i = 0; i < n.num_verticies; ++i) {
+    Ogre::Vector3 loc = m->points[m->vertexes[n.vert_pool + i].vertex];
+    Ogre::AxisAlignedBox box = m->getRegionAABB();
+    if (!box.contains(loc))
+      return true;
+  }
+  if (s.flags & L2Package::PF_WeDontCareAbout || !s.material)
+    return true;
+  if (  ar.GetClassName(s.material) == "g_01"
+      || ar.GetClassName(s.material) == "SkybackgroundColor"
+      || ar.GetClassName(s.material) == "Cloud_Final"
+      || ar.GetClassName(s.material) == "HazeRing_Final"
+      || ar.GetClassName(s.material) == "Base")
+    return true;
+  return false;
+}
 
-  std::fstream file("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\11_23.unr", std::ios::binary | std::ios::in);
+void TutorialApplication::loadMap(L2Package::StringRef path) {
+  std::fstream file(path, std::ios::binary | std::ios::in);
   L2Package::l2_decrypt_streambuf l2ds(*file.rdbuf());
   std::istream package_stream(&l2ds);
 
-  L2Package::Package p;
-  package_stream >> p;
+  L2Package::Archive &ar = *new L2Package::Archive(package_stream);
+  L2Package::ULevel *myLevel = ar.LoadExport<L2Package::ULevel>("myLevel");
+  std::vector<L2Package::UModel*> models;
+  ar.LoadExports("Model", models);
 
-  Ogre::Entity *ogreHead = mSceneMgr->createEntity("Head", "ogrehead.mesh");
-  Ogre::SceneNode *headNode = mSceneMgr->getRootSceneNode()->createChildSceneNode();
-  headNode->attachObject(ogreHead);
+  // Find the largest model. The others aren't right or something like that...
+  L2Package::UModel *m = nullptr;
+  for (auto i = models.begin(), e = models.end(); i != e; ++i) {
+    if (!m) {
+      m = *i;
+      continue;
+    }
+    if ((*i)->nodes.size() > m->nodes.size())
+      m = *i;
+  }
+
+  // Get region from path.
+  {
+    std::size_t loc = path.find_last_of("\\/");
+    if (loc == path.npos)
+      loc = 0;
+    ++loc;
+    path.substr(loc, 2).getAsInteger(10, m->regionX);
+    path.substr(loc + 3, 2).getAsInteger(10, m->regionY);
+  }
+
+  if (m->points.size() == 0)
+    return;
+
+  // Shink model.
+  std::vector<float> vertex_data;
+  std::vector<uint32_t> index_buf;
+  L2Package::Box bounds;
+
+  // Build vertex and index buffer.
+  for (auto ni = m->nodes.begin(), ne = m->nodes.end(); ni != ne; ++ni) {
+    L2Package::BSPNode &n = *ni;
+    L2Package::BSPSurface &s = m->surfaces[n.surface];
+
+    if (ignoreNode(m, n, s))
+      continue;
+
+    uint32_t vert_start = vertex_data.size() / 6;
+
+    // Vertex buffer.
+    if (n.num_verticies > 0) {
+      L2Package::Vector Normal = m->vectors[s.normal];
+
+      for (uint32_t vert_index = 0; vert_index < n.num_verticies; ++vert_index) {
+        const L2Package::Vector &pos = m->points[m->vertexes[n.vert_pool + vert_index].vertex];
+        bounds += pos;
+        vertex_data.push_back(pos.X);
+        vertex_data.push_back(pos.Y);
+        vertex_data.push_back(pos.Z);
+        vertex_data.push_back(Normal.X);
+        vertex_data.push_back(Normal.Y);
+        vertex_data.push_back(Normal.Z);
+      }
+
+      if (s.flags & L2Package::PF_TwoSided) {
+        for (uint32_t vert_index = 0; vert_index < n.num_verticies; ++vert_index) {
+          const L2Package::Vector &pos = m->points[m->vertexes[n.vert_pool + vert_index].vertex];
+          vertex_data.push_back(pos.X);
+          vertex_data.push_back(pos.Y);
+          vertex_data.push_back(pos.Z);
+          vertex_data.push_back(Normal.X);
+          vertex_data.push_back(Normal.Y);
+          vertex_data.push_back(-Normal.Z);
+        }
+      }
+    }
+
+    // Index buffer.
+    for (int verti = 2; verti < n.num_verticies; ++verti) {
+      index_buf.push_back(vert_start);
+      index_buf.push_back(vert_start + verti - 1);
+      index_buf.push_back(vert_start + verti);
+    }
+    if (s.flags & L2Package::PF_TwoSided) {
+      for (int verti = 2; verti < n.num_verticies; ++verti) {
+        index_buf.push_back(vert_start);
+        index_buf.push_back(vert_start + verti);
+        index_buf.push_back(vert_start + verti - 1);
+      }
+    }
+  }
+
+  Ogre::MeshPtr mesh = Ogre::MeshManager::getSingleton().createManual(Ogre::String(path) + Ogre::String(m->name), "General");
+  Ogre::VertexData  *data = new Ogre::VertexData();
+  mesh->sharedVertexData = data;
+  data->vertexCount = vertex_data.size() / 6;
+
+  Ogre::VertexDeclaration *decl = data->vertexDeclaration;
+  uint32_t offset = 0;
+  decl->addElement(0, offset, Ogre::VET_FLOAT3, Ogre::VES_POSITION);
+  offset += Ogre::VertexElement::getTypeSize(Ogre::VET_FLOAT3);
+  decl->addElement(0, offset, Ogre::VET_FLOAT3, Ogre::VES_NORMAL);
+  offset += Ogre::VertexElement::getTypeSize(Ogre::VET_FLOAT3);
+
+  Ogre::HardwareVertexBufferSharedPtr vbuf =
+    Ogre::HardwareBufferManager::getSingleton().createVertexBuffer(
+      offset,
+      data->vertexCount,
+      Ogre::HardwareBuffer::HBU_STATIC_WRITE_ONLY);
+  vbuf->writeData(0, vbuf->getSizeInBytes(), &vertex_data.front(), true);
+  data->vertexBufferBinding->setBinding(0, vbuf);
+
+  // Setup index buffer.
+  Ogre::HardwareIndexBufferSharedPtr ibuf =
+    Ogre::HardwareBufferManager::getSingleton().createIndexBuffer(
+      Ogre::HardwareIndexBuffer::IT_32BIT,
+      index_buf.size(),
+      Ogre::HardwareBuffer::HBU_STATIC_WRITE_ONLY);
+
+  ibuf->writeData(0, ibuf->getSizeInBytes(), &index_buf.front(), true);
+  Ogre::SubMesh *subMesh = mesh->createSubMesh();
+  subMesh->useSharedVertices = true;
+  subMesh->indexData->indexBuffer = ibuf;
+  subMesh->indexData->indexCount  = index_buf.size();
+  subMesh->indexData->indexStart  = 0;
+
+  mesh->_setBounds(Ogre::AxisAlignedBox(bounds.min.X, bounds.min.Y, bounds.min.Z, bounds.max.X, bounds.max.Y, bounds.max.Z));
+  mesh->_setBoundingSphereRadius((std::max(bounds.max.X - bounds.min.X, std::max(bounds.max.Y - bounds.min.Y, bounds.max.Z - bounds.min.Z))) / 2.0);
+
+  mesh->load();
+
+  Ogre::Entity *ent = mSceneMgr->createEntity(Ogre::String(path) + Ogre::String(m->name) + "E", Ogre::String(path) + Ogre::String(m->name));
+  ent->setUserAny(Ogre::Any(static_cast<L2Package::UObject*>(m)));
+  Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
+  node->attachObject(ent);
+  node->showBoundingBox(true);
+}
+
+//-------------------------------------------------------------------------------------
+void TutorialApplication::createScene(void)
+{
+  mUnrealCordNode = mSceneMgr->getRootSceneNode()->createChildSceneNode();
+  mUnrealCordNode->setScale(-0.02f, 0.02f, 0.02f);
+  mUnrealCordNode->pitch(Ogre::Degree(-90.0f));
   mSceneMgr->setAmbientLight(Ogre::ColourValue(0.5, 0.5, 0.5));
   Ogre::Light *l = mSceneMgr->createLight("MainLight");
   l->setPosition(20, 80, 50);
+
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\23_12.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\22_13.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\18_14.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\25_14.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\26_14.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\21_16.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\24_16.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\20_18.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\24_18.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\21_19.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\22_19.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\23_20.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\19_21.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\20_21.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\17_22.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\20_22.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\22_22.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\22_23.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\23_24.unr");
+  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\17_25.unr");
+}
+
+bool BSPLineIntersectRecurse(L2Package::UModel *m, const Ogre::Ray &ray, int node_index, Ogre::Vector3 &result) {
+  L2Package::BSPNode &n = m->nodes[node_index];
+  Ogre::Plane plane(n.plane.X, n.plane.Y, n.plane.Z, n.plane.W);
+  Ogre::Plane::Side side = plane.getSide(ray.getOrigin());
+
+  int front_index;
+  int back_index;
+
+  // Get next node index based on side.
+  if (side == Ogre::Plane::POSITIVE_SIDE) {
+    front_index = n.front;
+    back_index = n.back;
+  } else if (side == Ogre::Plane::NEGATIVE_SIDE) {
+    front_index = n.back;
+    back_index = n.front;
+  } else {
+    // Touching the plane?
+    result = ray.getOrigin();
+    return true;
+  }
+
+  if (ray.intersects(plane).first) {
+    // Check all nodes infront of this node if this node is in the ray path.
+    if (front_index >= 0 && BSPLineIntersectRecurse(m, ray, front_index, result))
+      return true;
+
+    // Check this node.
+    if (!ignoreNode(m, n, m->surfaces[n.surface])) {
+      for (int verti = 2; verti < n.num_verticies; ++verti) {
+        L2Package::Vector a = m->points[m->vertexes[n.vert_pool].vertex],
+                          b = m->points[m->vertexes[n.vert_pool + verti - 1].vertex],
+                          c = m->points[m->vertexes[n.vert_pool + verti].vertex];
+        auto res = Ogre::Math::intersects(ray,
+          Ogre::Vector3(a.X, a.Y, a.Z),
+          Ogre::Vector3(b.X, b.Y, b.Z),
+          Ogre::Vector3(c.X, c.Y, c.Z));
+        if (res.first) {
+          result = res.second;
+          return true;
+        }
+      }
+    }
+  }
+
+  // Check all nodes behind this node.
+  if (back_index >= 0 && BSPLineIntersectRecurse(m, ray, back_index, result))
+      return true;
+
+  return false;
+}
+
+Ogre::Vector3 BSPLineIntersect(L2Package::UModel *m, Ogre::Ray ray) {
+  // Transform ray into BSP space.
+  Ogre::Matrix4 bspspace = Ogre::Matrix4::IDENTITY;
+  bspspace.setScale(Ogre::Vector3(-50, 50, 50));
+  Ogre::Quaternion bsprot(Ogre::Degree(-90.0f), Ogre::Vector3::UNIT_X);
+  Ogre::Vector4 o(ray.getOrigin());
+  Ogre::Vector4 d(ray.getDirection());
+  o = o * bspspace * bsprot;
+  d = d * bspspace * bsprot;
+
+  ray.setOrigin(Ogre::Vector3(o.x, o.y, o.z));
+  ray.setDirection(Ogre::Vector3(d.x, d.y, d.z).normalisedCopy());
+
+  Ogre::Vector3 result;
+  if (BSPLineIntersectRecurse(m, ray, 0, result))
+    return result;
+  else
+    return ray.getOrigin();
+}
+
+bool TutorialApplication::mousePressed(const OIS::MouseEvent &arg, OIS::MouseButtonID id) {
+  BaseApplication::mousePressed(arg, id);
+
+  if (id == OIS::MB_Left) {
+    Ogre::Ray cam_ray = mCamera->getCameraToViewportRay(0.5f, 0.5f);
+    Ogre::RaySceneQuery *rayq = mSceneMgr->createRayQuery(cam_ray);
+    Ogre::RaySceneQueryResult &result = rayq->execute();
+
+    for (auto i = result.begin(), e = result.end(); i != e; ++i) {
+      if (i->movable) {
+        L2Package::UModel *m = dynamic_cast<L2Package::UModel*>(Ogre::any_cast<L2Package::UObject*>(i->movable->getUserAny()));
+        BSPLineIntersect(m, cam_ray);
+      }
+    }
+
+    mSceneMgr->destroyQuery(rayq);
+  }
+
+  return true;
 }
 
 
