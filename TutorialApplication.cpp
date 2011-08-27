@@ -84,6 +84,13 @@ void TutorialApplication::loadMap(l2p::StringRef name) {
   for (auto i = terrains.begin(), e = terrains.end(); i != e; ++i) {
     loadTerrain(*i);
   }
+
+  std::vector<std::shared_ptr<l2p::AStaticMeshActor>> smeshes;
+  package->GetObjects("StaticMeshActor", smeshes);
+
+  for (auto i = smeshes.begin(), e = smeshes.end(); i != e; ++i) {
+    loadStaticMeshActor(*i);
+  }
 }
 
 void TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m) {
@@ -145,6 +152,9 @@ void TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m) {
     }
   }
 
+  if (vertex_data.size() == 0 || index_buf.size() == 0)
+    return;
+
   Ogre::MeshPtr mesh = Ogre::MeshManager::getSingleton().createManual(Ogre::String(name) + Ogre::String(m->name), "General");
   Ogre::VertexData  *data = new Ogre::VertexData();
   mesh->sharedVertexData = data;
@@ -185,20 +195,22 @@ void TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m) {
   mesh->load();
 
   Ogre::Entity *ent = mSceneMgr->createEntity(Ogre::String(name) + Ogre::String(m->name) + "E", Ogre::String(name) + Ogre::String(m->name));
+  ent->setCastShadows(true);
   ent->setUserAny(Ogre::Any(static_cast<l2p::UObject*>(m.get())));
   Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
   node->attachObject(ent);
-  node->showBoundingBox(true);
 }
 
 struct BufferVert {
   Ogre::Vector3 position;
   Ogre::Vector3 normal;
+  Ogre::RGBA color;
 };
 
 void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
   l2p::Name name = ti->package->name;
   std::vector<BufferVert> vertex_buffer;
+  std::vector<Ogre::RGBA> color_buffer;
   std::vector<uint32_t> index_buffer;
   std::vector<uint16_t> &height_map = ti->terrain_map->G16_data;
   Ogre::Vector3 location = ogre_cast(ti->location);
@@ -211,8 +223,14 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
                            , location.z - (128 * scale.z)
                            );
 
+  float max_hight = (65535.f * (scale.z / 256.f)) + translation.z;
+  float min_hight = (0.f * (scale.z / 256.f)) + translation.z;
+
   vertex_buffer.reserve(USize * VSize);
+  color_buffer.reserve(USize * VSize);
   Ogre::AxisAlignedBox box;
+  Ogre::RenderSystem *rs = Ogre::Root::getSingleton().getRenderSystem();
+  float sealevel = -3770;
   for (int y = 0; y < VSize; ++y) {
     for (int x = 0; x < USize; ++x) {
       Ogre::Vector3 v( (x * scale.x) + translation.x
@@ -220,21 +238,41 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
                      , (height_map[(y * USize) + x] * (scale.z / 256.f)) + translation.z
                      );
       box.merge(v);
-      BufferVert bv = {v, Ogre::Vector3(0.f, 0.f, 0.f)};
+      BufferVert bv = {v, Ogre::Vector3(0.f, 0.f, 0.f), 0};
+      float val = -((v.z - min_hight)/(min_hight - max_hight));
+      Ogre::ColourValue cv;
+      if (v.z < sealevel)
+        cv = Ogre::ColourValue(0.f, 0.f, 1.f) * val;
+      else
+        cv = Ogre::ColourValue(0.f, 1.f, 0.f) * val;
+      rs->convertColourValue(cv, &bv.color);
       vertex_buffer.push_back(bv);
     }
   }
 
   for (int y = 0; y < VSize - 1; ++y) {
     for (int x = 0; x < USize - 1; ++x) {
-      // First part of quad.
-      index_buffer.push_back(x + (y * USize));
-      index_buffer.push_back((x + 1) + (y * USize));
-      index_buffer.push_back((x + 1) + ((y + 1) * USize));
-      // Second part of quad.
-      index_buffer.push_back(x + (y * USize));
-      index_buffer.push_back((x + 1) + ((y + 1) * USize));
-      index_buffer.push_back(x + ((y + 1) * USize));
+      if (!ti->quad_visibility_bitmap[x + (y * USize)])
+        continue;
+      if (!ti->edge_turn_bitmap[x + (y * USize)]) {
+        // First part of quad.
+        index_buffer.push_back(x + (y * USize));
+        index_buffer.push_back((x + 1) + (y * USize));
+        index_buffer.push_back((x + 1) + ((y + 1) * USize));
+        // Second part of quad.
+        index_buffer.push_back(x + (y * USize));
+        index_buffer.push_back((x + 1) + ((y + 1) * USize));
+        index_buffer.push_back(x + ((y + 1) * USize));
+      } else {
+        // First part of quad.
+        index_buffer.push_back(x + ((y + 1) * USize));
+        index_buffer.push_back(x + (y * USize));
+        index_buffer.push_back((x + 1) + (y * USize));
+        // Second part of quad.
+        index_buffer.push_back(x + ((y + 1) * USize));
+        index_buffer.push_back((x + 1) + (y * USize));
+        index_buffer.push_back((x + 1) + ((y + 1) * USize));
+      }
     }
   }
 
@@ -251,8 +289,6 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
 
   for (int i = 0; i < vertex_buffer.size(); ++i) {
     vertex_buffer[i].normal.normalise();
-    //vertex_buffer[i].normal.x *= -1;
-    //vertex_buffer[i].normal.y *= -1;
   }
 
   Ogre::MeshPtr mesh = Ogre::MeshManager::getSingleton().createManual(Ogre::String(name) + Ogre::String(ti->name), "General");
@@ -266,6 +302,8 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
   offset += Ogre::VertexElement::getTypeSize(Ogre::VET_FLOAT3);
   decl->addElement(0, offset, Ogre::VET_FLOAT3, Ogre::VES_NORMAL);
   offset += Ogre::VertexElement::getTypeSize(Ogre::VET_FLOAT3);
+  decl->addElement(0, offset, Ogre::VET_COLOUR, Ogre::VES_DIFFUSE);
+  offset += Ogre::VertexElement::getTypeSize(Ogre::VET_COLOUR);
 
   Ogre::HardwareVertexBufferSharedPtr vbuf =
     Ogre::HardwareBufferManager::getSingleton().createVertexBuffer(
@@ -294,44 +332,132 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
 
   mesh->load();
 
+  Ogre::MaterialPtr mat = Ogre::MaterialManager::getSingleton().create(
+    "Test/VertColor",
+    Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME);
+  mat->getTechnique(0)->getPass(0)->setVertexColourTracking(Ogre::TVC_AMBIENT);
+
   Ogre::Entity *ent = mSceneMgr->createEntity(Ogre::String(name) + Ogre::String(ti->name) + "E", Ogre::String(name) + Ogre::String(ti->name));
+  ent->setMaterialName("Test/VertColor");
   Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
   node->attachObject(ent);
-  node->showBoundingBox(true);
+}
+
+struct SMV {
+  Ogre::Vector3 position;
+  Ogre::Vector3 normal;
+};
+
+void TutorialApplication::loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshActor> sma) {
+  Ogre::String smesh_name(sma->package->name);
+  smesh_name += ".";
+  smesh_name += sma->name;
+
+  // Check to see if the mesh has already been loaded.
+  if (Ogre::MeshManager::getSingleton().getByName(smesh_name, "General").isNull()) {
+    std::vector<SMV> vertex_buffer;
+    std::vector<uint16_t> index_buffer;
+
+    std::shared_ptr<l2p::UStaticMesh> sm = sma->static_mesh;
+    if (!sm)
+      return;
+    // Build vertex buffer.
+    for (auto i = sm->vertices.begin(), e = sm->vertices.end(); i != e; ++i) {
+      SMV v = {ogre_cast(i->location), ogre_cast(i->normal)};
+      vertex_buffer.push_back(v);
+    }
+
+    // Build index buffer.
+    int tri_offset = 0;
+    for (auto i = sm->surfaces.begin(), e = sm->surfaces.end(); i != e; ++i) {
+      for (int tri = 0; tri < i->triangle_count; ++tri) {
+        if (tri_offset >= sm->vertex_indicies_1.size())
+          break;
+        index_buffer.push_back(sm->vertex_indicies_1[tri_offset + 2]);
+        index_buffer.push_back(sm->vertex_indicies_1[tri_offset + 1]);
+        index_buffer.push_back(sm->vertex_indicies_1[tri_offset]);
+        tri_offset += 3;
+      }
+    }
+
+    Ogre::MeshPtr mesh = Ogre::MeshManager::getSingleton().createManual(smesh_name, "General");
+    Ogre::VertexData  *data = new Ogre::VertexData();
+    mesh->sharedVertexData = data;
+    data->vertexCount = vertex_buffer.size();
+
+    Ogre::VertexDeclaration *decl = data->vertexDeclaration;
+    uint32_t offset = 0;
+    decl->addElement(0, offset, Ogre::VET_FLOAT3, Ogre::VES_POSITION);
+    offset += Ogre::VertexElement::getTypeSize(Ogre::VET_FLOAT3);
+    decl->addElement(0, offset, Ogre::VET_FLOAT3, Ogre::VES_NORMAL);
+    offset += Ogre::VertexElement::getTypeSize(Ogre::VET_FLOAT3);
+
+    Ogre::HardwareVertexBufferSharedPtr vbuf =
+      Ogre::HardwareBufferManager::getSingleton().createVertexBuffer(
+        offset,
+        data->vertexCount,
+        Ogre::HardwareBuffer::HBU_STATIC_WRITE_ONLY);
+    vbuf->writeData(0, vbuf->getSizeInBytes(), &vertex_buffer.front(), true);
+    data->vertexBufferBinding->setBinding(0, vbuf);
+
+    // Setup index buffer.
+    Ogre::HardwareIndexBufferSharedPtr ibuf =
+      Ogre::HardwareBufferManager::getSingleton().createIndexBuffer(
+        Ogre::HardwareIndexBuffer::IT_16BIT,
+        index_buffer.size(),
+        Ogre::HardwareBuffer::HBU_STATIC_WRITE_ONLY);
+
+    ibuf->writeData(0, ibuf->getSizeInBytes(), &index_buffer.front(), true);
+    Ogre::SubMesh *subMesh = mesh->createSubMesh();
+    subMesh->useSharedVertices = true;
+    subMesh->indexData->indexBuffer = ibuf;
+    subMesh->indexData->indexCount  = index_buffer.size();
+    subMesh->indexData->indexStart  = 0;
+
+    Ogre::AxisAlignedBox box(ogre_cast(sm->bounding_box.min), ogre_cast(sm->bounding_box.max));
+    mesh->_setBounds(box);
+    mesh->_setBoundingSphereRadius((std::max(box.getMaximum().x - box.getMinimum().x, std::max(box.getMaximum().y - box.getMinimum().y, box.getMaximum().z - box.getMinimum().z))) / 2.0);
+
+    mesh->load();
+  }
+
+  Ogre::String ent_name(sma->package->name);
+  ent_name += ".";
+  ent_name += sma->name;
+  Ogre::Entity *ent = mSceneMgr->createEntity(ent_name, smesh_name, "General");
+  Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
+  node->attachObject(ent);
+  node->setPosition(sma->location.X, sma->location.Y, sma->location.Z);
+  node->pitch(Ogre::Radian(0.000096f) * sma->rotation.pitch);
+  node->roll(Ogre::Radian(-0.000096f) * sma->rotation.yaw);
+  node->yaw(Ogre::Radian(-0.000096f) * sma->rotation.roll);
+  node->setScale(ogre_cast(sma->draw_scale_3d));
 }
 
 //-------------------------------------------------------------------------------------
 void TutorialApplication::createScene(void)
 {
   mUnrealCordNode = mSceneMgr->getRootSceneNode()->createChildSceneNode();
-  mUnrealCordNode->setScale(-0.02f, 0.02f, 0.02f);
+  mUnrealCordNode->setScale(-1.f, 1.f, 1.f);
   mUnrealCordNode->pitch(Ogre::Degree(-90.0f));
   mSceneMgr->setAmbientLight(Ogre::ColourValue(0.5, 0.5, 0.5));
+  mSceneMgr->setShadowTechnique(Ogre::SHADOWTYPE_TEXTURE_MODULATIVE);
   Ogre::Light *l = mSceneMgr->createLight("MainLight");
-  l->setPosition(20, 80, 50);
+  l->setType(Ogre::Light::LT_DIRECTIONAL);
+  l->setPosition(0, 0, 0);
+  l->setDirection(Ogre::Vector3(-0.5, -0.75, -0.5).normalisedCopy());
+  l->setDiffuseColour(0.5f, 0.5f, 0.5f);
+  l->setSpecularColour(0.f, 0.f, 0.f);
 
-  l2p::Package::Initialize("G:\\Program Files (x86)\\NCsoft\\Lineage II\\");
+  if (__argc < 2)
+    return;
 
-  loadMap("23_12");
-  loadMap("22_13");
-  loadMap("18_14");
-  loadMap("25_14");
-  loadMap("26_14");
-  loadMap("21_16");
-  loadMap("24_16");
-  loadMap("20_18");
-  loadMap("24_18");
-  loadMap("21_19");
-  loadMap("22_19");
-  loadMap("23_20");
-  loadMap("19_21");
-  loadMap("20_21");
-  loadMap("17_22");
-  loadMap("20_22");
-  loadMap("22_22");
-  loadMap("22_23");
-  loadMap("23_24");
-  loadMap("17_25");
+  l2p::Package::Initialize(__argv[1]);
+
+  // Load maps.
+  for (int i = 2; i < __argc; ++i) {
+    loadMap(__argv[i]);
+  }
 }
 
 bool BSPLineIntersectRecurse(l2p::UModel *m, const Ogre::Ray &ray, int node_index, Ogre::Vector3 &result) {
@@ -408,7 +534,7 @@ Ogre::Vector3 BSPLineIntersect(l2p::UModel *m, Ogre::Ray ray) {
 bool TutorialApplication::mousePressed(const OIS::MouseEvent &arg, OIS::MouseButtonID id) {
   BaseApplication::mousePressed(arg, id);
 
-  if (id == OIS::MB_Left) {
+  /*if (id == OIS::MB_Left) {
     Ogre::Ray cam_ray = mCamera->getCameraToViewportRay(0.5f, 0.5f);
     Ogre::RaySceneQuery *rayq = mSceneMgr->createRayQuery(cam_ray);
     Ogre::RaySceneQueryResult &result = rayq->execute();
@@ -421,7 +547,7 @@ bool TutorialApplication::mousePressed(const OIS::MouseEvent &arg, OIS::MouseBut
     }
 
     mSceneMgr->destroyQuery(rayq);
-  }
+  }*/
 
   return true;
 }

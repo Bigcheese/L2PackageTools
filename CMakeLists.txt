@@ -102,6 +102,8 @@ set(SRCS
   ./TutorialApplication.cpp
 )
 
+# add_definitions(-D_HAS_ITERATOR_DEBUGGING=0)
+
 include_directories(.)
 add_subdirectory(l2p)
 add_subdirectory(l2ptest)

@@ -270,7 +270,7 @@ struct NameEntry {
   uint32_t flags;
 
   friend Package &operator >>(Package &p, NameEntry &ne) {
-    p >> ExtractArray<Index, char>(ne.name);
+    p >> ExtractArray<Index, little8_t>(ne.name);
     p >> Extract<ulittle32_t>(ne.flags);
     // Remove the trailing 0.
     ne.name.pop_back();
@@ -356,6 +356,10 @@ std::shared_ptr<UObject> Package::DeserializeExport(Export &e) {
     ret.reset(new ATerrainInfo);
   } else if (class_name == "Texture") {
     ret.reset(new UTexture);
+  } else if (class_name == "StaticMesh") {
+    ret.reset(new UStaticMesh);
+  } else if (class_name == "StaticMeshActor") {
+    ret.reset(new AStaticMeshActor);
   } else {
     // Unknown, but it must be a child of UObject, so use that.
     ret.reset(new UObject);

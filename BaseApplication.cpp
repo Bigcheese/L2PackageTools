@@ -82,10 +82,11 @@ void BaseApplication::createCamera(void)
     mCamera->setPosition(Ogre::Vector3(0,0,80));
     // Look back along -Z
     mCamera->lookAt(Ogre::Vector3(0,0,-300));
-    mCamera->setNearClipDistance(0.1f);
-    mCamera->setFarClipDistance(0);
+    mCamera->setNearClipDistance(50.f);
+    mCamera->setFarClipDistance(622592.f);
 
     mCameraMan = new OgreBites::SdkCameraMan(mCamera);   // create a default camera controller
+    mCameraMan->setTopSpeed(mCameraMan->getTopSpeed() * 25);
 }
 //-------------------------------------------------------------------------------------
 void BaseApplication::createFrameListener(void)
@@ -115,7 +116,6 @@ void BaseApplication::createFrameListener(void)
 
     mTrayMgr = new OgreBites::SdkTrayManager("InterfaceName", mWindow, mMouse, this);
     mTrayMgr->showFrameStats(OgreBites::TL_BOTTOMLEFT);
-    mTrayMgr->showLogo(OgreBites::TL_BOTTOMRIGHT);
     mTrayMgr->hideCursor();
 
     // create a params panel for displaying sample details

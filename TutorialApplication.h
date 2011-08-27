@@ -32,6 +32,7 @@ protected:
   void loadMap(l2p::StringRef path);
   void loadBSP(std::shared_ptr<l2p::UModel> m);
   void loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti);
+  void loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshActor> sma);
   virtual void createScene(void);
   virtual bool mousePressed(const OIS::MouseEvent &arg, OIS::MouseButtonID id);
 

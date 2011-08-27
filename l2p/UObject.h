@@ -129,6 +129,7 @@ struct Rotator {
 
 struct Vector {
   float X, Y, Z;
+
   friend Package &operator >>(Package &p, Vector &v) {
     p >> v.X >> v.Y >> v.Z;
     return p;
@@ -144,16 +145,17 @@ struct ObjectRef {
   ObjectRef()
     : package(nullptr)
     , object(nullptr) {
+    index.value = 0;
   }
 
   std::shared_ptr<T> operator ->() {
-    if (!object)
+    if (!object && index)
       object = std::dynamic_pointer_cast<T>(package->GetObject(index));
     return object;
   }
 
   operator std::shared_ptr<T>() {
-    if (!object)
+    if (!object && index)
       object = std::dynamic_pointer_cast<T>(package->GetObject(index));
     return object;
   }
@@ -187,6 +189,7 @@ struct Property {
     Vector vector_value;
     Rotator rotator_value;
   };
+  std::vector<uint8_t> data_value;
 
   friend Package &operator >>(Package &pa, Property &p) {
     pa >> p.name;
@@ -225,6 +228,10 @@ struct Property {
     case 0x05:
     case 0x06:
       pa >> p.index_value;
+      break;
+    case 0x09:
+      p.data_value.resize(p.size);
+      static_cast<std::istream&>(pa).read((char*)&p.data_value.front(), p.size);
       break;
     case 0x0A:
       if (p.struct_name == "Vector")
@@ -535,11 +542,116 @@ public:
   int32_t regionY;
 };
 
+struct SMeshSurface {
+  uint32_t unknown;
+  uint32_t offset_size;
+  uint16_t vertex_max;
+  uint16_t triangle_count;
+  uint16_t triangle_max;
+
+  friend Package &operator >>(Package &p, SMeshSurface &sms) {
+    p >> Extract<ulittle32_t>(sms.unknown)
+      >> Extract<ulittle32_t>(sms.offset_size)
+      >> Extract<ulittle16_t>(sms.vertex_max)
+      >> Extract<ulittle16_t>(sms.triangle_count)
+      >> Extract<ulittle16_t>(sms.triangle_max);
+    return p;
+  }
+};
+
+struct SMeshVertex {
+  Vector location, normal;
+
+  friend Package &operator >>(Package &p, SMeshVertex &smv) {
+    p >> smv.location
+      >> smv.normal;
+    return p;
+  }
+};
+
+struct Color {
+  uint8_t b, g, r, a;
+
+  friend Package &operator >>(Package &p, Color &c) {
+    p >> Extract<ulittle8_t>(c.b)
+      >> Extract<ulittle8_t>(c.g)
+      >> Extract<ulittle8_t>(c.r)
+      >> Extract<ulittle8_t>(c.a);
+    return p;
+  }
+};
+
+struct SMeshCoord {
+  float u, v;
+
+  friend Package &operator >>(Package &p, SMeshCoord &smc) {
+    p >> smc.u
+      >> smc.v;
+    return p;
+  }
+};
+
+struct SMeshCoords {
+  std::vector<SMeshCoord> elements;
+  uint32_t unk1;
+  uint32_t unk2;
+
+  friend Package &operator >>(Package &p, SMeshCoords &smc) {
+    p >> ExtractArray<Index, SMeshCoord>(smc.elements)
+      >> Extract<ulittle32_t>(smc.unk1)
+      >> Extract<ulittle32_t>(smc.unk2);
+    return p;
+  }
+};
+
+class UStaticMesh : public UPrimative {
+public:
+  std::vector<SMeshSurface> surfaces;
+  Box another_bb;
+  std::vector<SMeshVertex> vertices;
+  std::vector<Color> vertex_colors_1;
+  std::vector<Color> vertex_colors_2;
+  std::vector<SMeshCoords> texture_coords;
+  std::vector<uint16_t> vertex_indicies_1;
+  std::vector<uint16_t> vertex_indicies_2;
+
+  void Deserialize(Package &p) {
+    UPrimative::Deserialize(p);
+
+    uint32_t unk;
+
+      p >> ExtractArray<Index, SMeshSurface>(surfaces)
+        >> another_bb
+        >> ExtractArray<Index, SMeshVertex>(vertices)
+        >> Extract<ulittle32_t>(unk)
+        >> ExtractArray<Index, Color>(vertex_colors_1)
+        >> Extract<ulittle32_t>(unk)
+        >> ExtractArray<Index, Color>(vertex_colors_2)
+        >> Extract<ulittle32_t>(unk)
+        >> ExtractArray<Index, SMeshCoords>(texture_coords)
+        >> ExtractArray<Index, ulittle16_t>(vertex_indicies_1)
+        >> Extract<ulittle32_t>(unk)
+        >> ExtractArray<Index, ulittle16_t>(vertex_indicies_2);
+  }
+};
+
 class AActor : public UObject {
 public:
   Vector location;
   Rotator rotation;
   float draw_scale;
+  Vector draw_scale_3d;
+  ObjectRef<UStaticMesh> static_mesh;
+
+  AActor()
+    : draw_scale(1.f) {
+    draw_scale_3d.X = 1.f;
+    draw_scale_3d.Y = 1.f;
+    draw_scale_3d.Z = 1.f;
+    rotation.pitch = 0.f;
+    rotation.yaw = 0.f;
+    rotation.roll = 0.f;
+  }
 
   virtual bool SetProperty(const Property &p) {
     if (UObject::SetProperty(p))
@@ -554,10 +666,19 @@ public:
     } else if (p.name == "DrawScale") {
       draw_scale = p.float_value;
       return true;
+    } else if (p.name == "DrawScale3D") {
+      draw_scale_3d = p.vector_value;
+      return true;
+    } else if (p.name == "StaticMesh") {
+      static_mesh.index = p.index_value;
+      static_mesh.package = package;
+      return true;
     }
     return false;
   }
 };
+
+class AStaticMeshActor : public AActor {};
 
 class AInfo : public AActor {};
 
@@ -565,8 +686,8 @@ class ATerrainInfo : public AInfo {
 public:
   ObjectRef<UTexture> terrain_map;
   Vector terrain_scale;
-  boost::dynamic_bitset<> quad_visibility_bitmap;
-  boost::dynamic_bitset<> edge_turn_bitmap;
+  boost::dynamic_bitset<uint8_t> quad_visibility_bitmap;
+  boost::dynamic_bitset<uint8_t> edge_turn_bitmap;
   int32_t map_x;
   int32_t map_y;
 
@@ -582,8 +703,10 @@ public:
       terrain_scale = p.vector_value;
       return true;
     } else if (p.name == "QuadVisibilityBitmap") {
+      quad_visibility_bitmap.append(p.data_value.begin() + 2, p.data_value.end());
       return true;
     } else if (p.name == "EdgeTurnBitmap") {
+      edge_turn_bitmap.append(p.data_value.begin() + 2, p.data_value.end());
       return true;
     } else if (p.name == "MapX") {
       map_x = p.int32_t_value;

@@ -24,12 +24,10 @@ int main(int argc, char *argv[]) {
   }
 
   l2p::Package *p = l2p::Package::GetPackage("22_22");
-  std::vector<std::shared_ptr<l2p::ATerrainInfo>> terrains;
-  p->GetObjects("TerrainInfo", terrains);
+  std::vector<std::shared_ptr<l2p::AStaticMeshActor>> smeshes;
+  p->GetObjects("StaticMeshActor", smeshes);
 
-  std::shared_ptr<l2p::ATerrainInfo> main = terrains.front();
-
-  std::shared_ptr<l2p::UTexture> t = main->terrain_map;
+  std::shared_ptr<l2p::UStaticMesh> sm = smeshes.front()->static_mesh;
 
   return 0;
 }
