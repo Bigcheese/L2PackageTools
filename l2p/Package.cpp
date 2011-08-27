@@ -47,35 +47,27 @@ std::array<L2Paths, 6> dirs = {
   L2Paths("Textures", "utx")
 };
 
-class l2_decrypt_streambuf : public std::streambuf
-{
+class l2_decrypt_filter : public io::multichar_filter<io::input_seekable> {
 public:
-  typedef std::streambuf::traits_type traits_type;
-  typedef traits_type::int_type int_type;
-  typedef traits_type::pos_type pos_type;
-  typedef traits_type::off_type off_type;
+  l2_decrypt_filter()
+    : initialized(false) {}
 
-  explicit l2_decrypt_streambuf(std::basic_streambuf<char> &orig)
-    : orig_streambuf(orig)
-    , buffer(BUFF_SIZE) {
-      // Setup the input buffer so that underflow is called on the first read.
-      setg(0, 0, 0);
-
-
+  template<class SourceT>
+  std::streamsize read(SourceT &d, char *buffer, std::streamsize size) {
+    if (!initialized) {
+      io::seek(d, 0, std::ios::beg, std::ios::in);
       std::array<char, 22> target_header = {
         0x4C, 0x00, 0x69, 0x00, 0x6E, 0x00, 0x65, 0x00,
         0x61, 0x00, 0x67, 0x00, 0x65, 0x00, 0x32, 0x00,
         0x56, 0x00, 0x65, 0x00, 0x72, 0x00
-      };
+      }; // Lineage2Ver
       // Read the version from orig_streambuf.
       std::array<char, 22> header_buf;
       std::array<char, 6>  version_buf;
-      orig_streambuf.sgetn(header_buf.data(), 22);
-      orig_streambuf.sgetn(version_buf.data(), 6);
-      if (header_buf != target_header) {
-        buffer.resize(0);
-        return;
-      }
+      io::read(d, header_buf.data(), 22);
+      io::read(d, version_buf.data(), 6);
+      if (header_buf != target_header)
+        return -1;
 
       // Get the version as an integer.
       std::string ver;
@@ -86,107 +78,54 @@ public:
       std::istringstream out(ver);
       int archive_version;
       out >> archive_version;
-      if (!out) {
-        buffer.resize(0);
-        return;
-      }
+      if (!out)
+        return -1;
 
       // Get key from version.
       switch (archive_version) {
       case 111: key = 0xAC; break;
       case 121: {
-          uint8_t val = orig_streambuf.sgetc();
+          uint8_t val = io::get(d);
           key = val ^ 0xC1;
           break;
         }
       default:
-        buffer.resize(0);
-        return;
+        return -1;
       }
 
       // Get the total file size so we know when to return EOF.
-      file_size = orig_streambuf.pubseekoff(0, std::ios::end, std::ios::in);
-      orig_streambuf.pubseekoff(28, std::ios::beg, std::ios::in);
-      if (file_size == pos_type(off_type(-1))) {
-        buffer.resize(0);
-        return;
+      file_size = io::seek(d, 0, std::ios::end, std::ios::in);
+      io::seek(d, 28, std::ios::beg, std::ios::in);
+      if (file_size == -1)
+        return -1;
+
+      initialized = true;
+    }
+
+    std::streamsize len = io::read(d, buffer, size);
+    if (len != -1) {
+      for (int i = 0; i < len; ++i) {
+        buffer[i] ^= key;
       }
     }
-
-protected:
-  int_type l2_decrypt_streambuf::underflow() {
-    if (buffer.size() == 0)
-      return traits_type::eof();
-
-    // Read up to buffer.size() from the origial streambuf.
-    std::streamsize len = orig_streambuf.sgetn(&buffer.front(), buffer.size());
-    if (len <= 20)
-      return traits_type::eof();
-
-    // Check to see if we read up to the end.
-    pos_type loc = orig_streambuf.pubseekoff(0, std::ios::cur, std::ios::in);
-    if (loc > (file_size - off_type(20)))
-      loc -= (file_size - off_type(20));
-    else
-      loc = 0;
-
-    // Set our buffer.
-    setg(&buffer.front(), &buffer.front(), &buffer.front() + (len - loc));
-
-    // Decrypt the buffer.
-    for (auto i = buffer.begin(), e = buffer.end(); i != e; ++i) {
-      *i ^= key;
-    }
-
-    return traits_type::not_eof(buffer.front());
+    return len;
   }
 
-  pos_type l2_decrypt_streambuf::seekpos(pos_type sp, std::ios::openmode which) {
-    // Only change input pos.
-    if (~which & std::ios::in)
-      return pos_type(off_type(-1));
-
-    // Check bounds.
-    if (sp > file_size - off_type(28 + 20))
-      return pos_type(off_type(-1));
-
-    // Seek the underlying buffer.
-    pos_type pos = orig_streambuf.pubseekpos(sp + off_type(28), which);
-    if (pos == pos_type(off_type(-1)))
-      return pos;
-
-    // Update the decrypted buffer.
-    // TODO: Make this more efficent in the case where sp is within the current
-    //       buffer.
-    underflow();
-
-    return pos - off_type(28);
-  }
-
-  pos_type l2_decrypt_streambuf::seekoff(off_type off, std::ios::seekdir way, std::ios::openmode which) {
-    // Only change input pos.
-    if (~which & std::ios::in)
-      return pos_type(off_type(-1));
-
-    // Seek the underlying buffer.
-    pos_type pos = orig_streambuf.pubseekoff(off, way, which);
-    if (pos == pos_type(off_type(-1)))
-      return pos;
-
-    // Update the decrypted buffer.
-    // TODO: Make this more efficent in the case where off is within the current
-    //       buffer.
-    underflow();
-
-    return pos - off_type(28);
+  template<class SourceT>
+  std::streampos seek(SourceT &d, io::stream_offset off, std::ios::seekdir way) {
+    if (way == std::ios::beg)
+      return io::seek(d, off + 28, way, std::ios::in) - io::stream_offset(28);
+    if (way == std::ios::cur)
+      return io::seek(d, off, way, std::ios::in) - io::stream_offset(28);
+    if (way == std::ios::end)
+      return io::seek(d, off - 20, way, std::ios::in) - io::stream_offset(28);
+    return -1;
   }
 
 private:
-  static const size_t BUFF_SIZE = 4096;
-  std::basic_streambuf<char> &orig_streambuf;
-  std::vector<char> buffer;
+  bool initialized;
   uint8_t key;
-  pos_type file_size;
+  std::streamsize file_size;
 };
 }
 
@@ -199,7 +138,7 @@ Package &Package::operator >>(Name &n) {
 
 Package &Package::operator >>(Index &i) {
   uint8_t b;
-  *input >> Extract<ulittle8_t>(b);
+  input >> Extract<ulittle8_t>(b);
   int neg = b & (1 << 7);
   int index = b & 0x3f;
 
@@ -208,7 +147,7 @@ Package &Package::operator >>(Index &i) {
       int data;
       int j = 1;
       do {
-          *input >> Extract<ulittle8_t>(b);
+          input >> Extract<ulittle8_t>(b);
           data = b & 0x7f;
           data <<= shift;
           index |= data;
@@ -343,33 +282,24 @@ struct NameEntry {
 Package::Package(StringRef path, Name name)
   : name(name) {
   // Get file streambuf.
-  std::unique_ptr<std::basic_filebuf<char>>
-    file_buf(new std::basic_filebuf<char>);
-  if (file_buf->open(path.str().c_str(), std::ios::in | std::ios::binary) == nullptr)
-    throw std::runtime_error("Failed to open file");
-
-  // Setup the decryption streambuf.
-  input_chain.emplace_back(new l2_decrypt_streambuf(*file_buf));
-  input_chain.emplace_back(file_buf.release());
-
-  // Setup the actual input stream.
-  input.reset(new std::istream(input_chain.front().get()));
+  input.push(l2_decrypt_filter());
+  input.push(io::file_source(path, std::ios::in | std::ios::binary));
 
   // Read the package metadata.
   *this >> header;
-  input->seekg(header.name_offset);
+  input.seekg(header.name_offset);
   for (int32_t i = 0; i < header.name_count; ++i) {
     NameEntry ne;
     *this >> ne;
     name_map.push_back(Name::make(*GNames.insert(std::move(ne.name)).first));
   }
-  input->seekg(header.import_offset);
+  input.seekg(header.import_offset);
   for (int32_t i = 0; i < header.import_count; ++i) {
     Import im;
     *this >> im;
     import_table.push_back(std::move(im));
   }
-  input->seekg(header.export_offset);
+  input.seekg(header.export_offset);
   for (int32_t i = 0; i < header.export_count; ++i) {
     Export e;
     *this >> e;
@@ -424,6 +354,8 @@ std::shared_ptr<UObject> Package::DeserializeExport(Export &e) {
     ret.reset(new UModel);
   } else if (class_name == "TerrainInfo") {
     ret.reset(new ATerrainInfo);
+  } else if (class_name == "Texture") {
+    ret.reset(new UTexture);
   } else {
     // Unknown, but it must be a child of UObject, so use that.
     ret.reset(new UObject);
@@ -433,7 +365,7 @@ std::shared_ptr<UObject> Package::DeserializeExport(Export &e) {
     ret->name = e.name;
     ret->package = this;
     if (e.size > 0)
-      input->seekg(std::istream::off_type(e.offset));
+      input.seekg(std::istream::off_type(e.offset));
     *this >> *ret;
   }
   e.object = ret;

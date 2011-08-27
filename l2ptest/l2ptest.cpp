@@ -24,16 +24,12 @@ int main(int argc, char *argv[]) {
   }
 
   l2p::Package *p = l2p::Package::GetPackage("22_22");
-  std::vector<std::shared_ptr<l2p::UModel>> models;
-  p->GetObjects("Model", models);
+  std::vector<std::shared_ptr<l2p::ATerrainInfo>> terrains;
+  p->GetObjects("TerrainInfo", terrains);
 
-  std::shared_ptr<l2p::UModel> main = models.front();
-  for (auto i = models.begin(), e = models.end(); i != e; ++i) {
-    if ((*i)->nodes.size() > main->nodes.size())
-      main = *i;
-  }
+  std::shared_ptr<l2p::ATerrainInfo> main = terrains.front();
 
-  std::shared_ptr<l2p::UObject> t = main->surfaces.front().material;
+  std::shared_ptr<l2p::UTexture> t = main->terrain_map;
 
   return 0;
 }

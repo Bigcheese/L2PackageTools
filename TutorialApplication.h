@@ -18,7 +18,9 @@ This source file is part of the
 #define __TutorialApplication_h_
 
 #include "BaseApplication.h"
-#include "L2Package.h"
+#undef GetObject
+#include "l2p/StringRef.h"
+#include "l2p/UObject.h"
 
 class TutorialApplication : public BaseApplication
 {
@@ -27,7 +29,9 @@ public:
   virtual ~TutorialApplication(void);
 
 protected:
-  void loadMap(L2Package::StringRef path);
+  void loadMap(l2p::StringRef path);
+  void loadBSP(std::shared_ptr<l2p::UModel> m);
+  void loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti);
   virtual void createScene(void);
   virtual bool mousePressed(const OIS::MouseEvent &arg, OIS::MouseButtonID id);
 

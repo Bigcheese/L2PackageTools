@@ -147,7 +147,9 @@ struct ObjectRef {
   }
 
   std::shared_ptr<T> operator ->() {
-    return static_cast<std::shared_ptr<T>&>(*this);
+    if (!object)
+      object = std::dynamic_pointer_cast<T>(package->GetObject(index));
+    return object;
   }
 
   operator std::shared_ptr<T>() {
@@ -304,6 +306,101 @@ public:
   }
 };
 
+class UMaterial : public UObject {};
+class URenderedMaterial : public UMaterial {};
+
+class UBitmapMaterial : public URenderedMaterial {
+public:
+  enum ETextureFormat {
+    TEXF_P8,
+    TEXF_RGBA7,
+    TEXF_RGB16,
+    TEXF_DXT1,
+    TEXF_RGB8,
+    TEXF_RGBA8,
+    TEXF_NODATA,
+    TEXF_DXT3,
+    TEXF_DXT5,
+    TEXF_L8,
+    TEXF_G16,
+    TEXF_RRRGGGBBB,
+  } Format;
+  uint8_t  UBits, VBits;
+  int32_t  USize, VSize;
+  int32_t  UClamp, VClamp;
+
+  enum ETexClampMode {
+    TC_Wrap,
+    TC_Clamp
+  } UClampMode, VClampMode;
+
+  virtual bool SetProperty(const Property &p) {
+    if (URenderedMaterial::SetProperty(p))
+      return true;
+
+    if (p.name == "Format") {
+      Format = static_cast<ETextureFormat>(p.uint8_t_value);
+      return true;
+    } else if (p.name == "UBits") {
+      UBits = p.uint8_t_value;
+      return true;
+    } else if (p.name == "VBits") {
+      VBits = p.uint8_t_value;
+      return true;
+    } else if (p.name == "USize") {
+      USize = p.int32_t_value;
+      return true;
+    } else if (p.name == "VSize") {
+      VSize = p.int32_t_value;
+      return true;
+    } else if (p.name == "UClamp") {
+      UClamp = p.int32_t_value;
+      return true;
+    } else if (p.name == "VClamp") {
+      VClamp = p.int32_t_value;
+      return true;
+    }
+
+    return false;
+  }
+};
+
+class UTexture : public UBitmapMaterial {
+  public:
+  std::vector<uint16_t> G16_data;
+
+  virtual bool SetProperty(const Property &p) {
+    if (UBitmapMaterial::SetProperty(p))
+      return true;
+    return false;
+  }
+
+  virtual void Deserialize(Package &p) {
+    UBitmapMaterial::Deserialize(p);
+
+    // Read a bunch of stuff I don't understand.
+    char giant_buffer_of_dont_care[4096];
+    static_cast<std::istream&>(p).read(giant_buffer_of_dont_care, 36);
+    Index dontcare;
+    p >> dontcare;
+    p >> dontcare;
+    static_cast<std::istream&>(p).read(giant_buffer_of_dont_care, dontcare);
+    static_cast<std::istream&>(p).read(giant_buffer_of_dont_care, 1);
+    p >> dontcare;
+    static_cast<std::istream&>(p).read(giant_buffer_of_dont_care, dontcare);
+    static_cast<std::istream&>(p).read(giant_buffer_of_dont_care, 12);
+
+    if (Format == TEXF_G16) {
+      uint32_t size = USize * VSize;
+      G16_data.resize(size);
+      for (uint32_t i = 0; i < size; ++i) {
+        p >> Extract<ulittle16_t>(G16_data[i]);
+      }
+    }
+  }
+
+};
+
 struct BSPNode {
   Plane plane;
   uint64_t zone_mask;
@@ -363,7 +460,7 @@ enum EPolyFlags
 };
 
 struct BSPSurface {
-  ObjectRef<UObject> material;
+  ObjectRef<UTexture> material;
   uint32_t flags;
   Index base;
   Index normal;
@@ -466,7 +563,7 @@ class AInfo : public AActor {};
 
 class ATerrainInfo : public AInfo {
 public:
-  Index terrain_map;
+  ObjectRef<UTexture> terrain_map;
   Vector terrain_scale;
   boost::dynamic_bitset<> quad_visibility_bitmap;
   boost::dynamic_bitset<> edge_turn_bitmap;
@@ -478,7 +575,8 @@ public:
       return true;
 
     if (p.name == "TerrainMap") {
-      terrain_map = p.index_value;
+      terrain_map.index = p.index_value;
+      terrain_map.package = package;
       return true;
     } else if (p.name == "TerrainScale") {
       terrain_scale = p.vector_value;

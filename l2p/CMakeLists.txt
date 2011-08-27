@@ -13,6 +13,7 @@ add_library(l2p STATIC
   Package.cpp
   UObject.h
   UObject.cpp
+  StringRef.cpp
   )
 
 target_link_libraries(l2p

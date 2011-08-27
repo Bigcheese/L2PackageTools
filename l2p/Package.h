@@ -16,6 +16,10 @@
 
 #include "l2p/StringRef.h"
 
+#include "boost/iostreams/filter/symmetric.hpp"
+#include "boost/iostreams/device/file.hpp"
+#include "boost/iostreams/filtering_stream.hpp"
+
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -26,6 +30,8 @@
 #include <vector>
 
 namespace l2p {
+
+namespace io = boost::iostreams;
 
 using std::uint64_t;
 using std::uint32_t;
@@ -119,16 +125,16 @@ public:
   Package &operator >>(GenerationInfo &g);
   Package &operator >>(Header &h);
   Package &operator >>(char &c) {
-    *input >> c;
+    input >> c;
     return *this;
   }
   Package &operator >>(float &f) {
-    input->read(reinterpret_cast<char*>(&f), sizeof(f));
+    input.read(reinterpret_cast<char*>(&f), sizeof(f));
     return *this;
   }
 
   operator std::istream &() {
-    return *input;
+    return input;
   }
 
   std::shared_ptr<UObject> GetObject(int index);
@@ -164,6 +170,8 @@ public:
   //! returns nullptr if the package does not exist or failed to open.
   static Package *GetPackage(StringRef name);
 
+  Name name;
+
 private:
   Package(StringRef path, Name name);
 
@@ -172,9 +180,7 @@ private:
   //! The list of streambuf filters leading up to the input. input_chain.front()
   //! returns the same value as input.rdbuf().
   //! This generally holds {l2_decrypt_streambuf, std::basic_ifstream<char>}
-  std::vector<std::unique_ptr<std::streambuf>> input_chain;
-  std::unique_ptr<std::istream> input;
-  Name name;
+  io::filtering_istream input;
   // Maps package name indicies to global names.
   std::vector<Name> name_map;
   std::vector<Import> import_table;

@@ -95,17 +95,11 @@ endif()
 set(HDRS
   ./BaseApplication.h
   ./TutorialApplication.h
-  ./PackedEndian.h
-  ./StringRef.h
-  ./SwapByteOrder.h
-  ./L2Package.h
 )
 
 set(SRCS
   ./BaseApplication.cpp
   ./TutorialApplication.cpp
-  ./StringRef.cpp
-  ./L2Package.cpp
 )
 
 include_directories(.)

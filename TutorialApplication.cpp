@@ -15,8 +15,18 @@ This source file is part of the
 -----------------------------------------------------------------------------
 */
 #include "TutorialApplication.h"
+#undef GetObject
+#include "l2p/UObject.h"
 
 #include <vector>
+
+Ogre::Vector3 ogre_cast(const l2p::Vector &v) {
+  return Ogre::Vector3(v.X, v.Y, v.Z);
+}
+
+Ogre::AxisAlignedBox ogre_cast(const l2p::Box &b) {
+  return Ogre::AxisAlignedBox(ogre_cast(b.min), ogre_cast(b.max));
+}
 
 //-------------------------------------------------------------------------------------
 TutorialApplication::TutorialApplication(void)
@@ -27,37 +37,29 @@ TutorialApplication::~TutorialApplication(void)
 {
 }
 
-bool ignoreNode(L2Package::UModel *m, L2Package::BSPNode &n, L2Package::BSPSurface &s) {
-  L2Package::Archive &ar = *m->archive;
+bool ignoreNode(l2p::UModel *m, l2p::BSPNode &n, l2p::BSPSurface &s) {
+  l2p::Package &p = *m->package;
   for (int i = 0; i < n.num_verticies; ++i) {
-    Ogre::Vector3 loc = m->points[m->vertexes[n.vert_pool + i].vertex];
-    Ogre::AxisAlignedBox box = m->getRegionAABB();
+    Ogre::Vector3 loc = ogre_cast(m->points[m->vertexes[n.vert_pool + i].vertex]);
+    Ogre::AxisAlignedBox box = ogre_cast(m->getRegionAABB());
     if (!box.contains(loc))
       return true;
   }
-  if (s.flags & L2Package::PF_WeDontCareAbout || !s.material)
-    return true;
-  if (  ar.GetClassName(s.material) == "g_01"
-      || ar.GetClassName(s.material) == "SkybackgroundColor"
-      || ar.GetClassName(s.material) == "Cloud_Final"
-      || ar.GetClassName(s.material) == "HazeRing_Final"
-      || ar.GetClassName(s.material) == "Base")
+  if (s.flags & l2p::PF_WeDontCareAbout || !s.material.index)
     return true;
   return false;
 }
 
-void TutorialApplication::loadMap(L2Package::StringRef path) {
-  std::fstream file(path, std::ios::binary | std::ios::in);
-  L2Package::l2_decrypt_streambuf l2ds(*file.rdbuf());
-  std::istream package_stream(&l2ds);
+void TutorialApplication::loadMap(l2p::StringRef name) {
+  l2p::Package *package = l2p::Package::GetPackage(name);
+  if (!package)
+    return;
 
-  L2Package::Archive &ar = *new L2Package::Archive(package_stream);
-  L2Package::ULevel *myLevel = ar.LoadExport<L2Package::ULevel>("myLevel");
-  std::vector<L2Package::UModel*> models;
-  ar.LoadExports("Model", models);
+  std::vector<std::shared_ptr<l2p::UModel>> models;
+  package->GetObjects("Model", models);
 
   // Find the largest model. The others aren't right or something like that...
-  L2Package::UModel *m = nullptr;
+  std::shared_ptr<l2p::UModel> m = nullptr;
   for (auto i = models.begin(), e = models.end(); i != e; ++i) {
     if (!m) {
       m = *i;
@@ -69,38 +71,43 @@ void TutorialApplication::loadMap(L2Package::StringRef path) {
 
   // Get region from path.
   {
-    std::size_t loc = path.find_last_of("\\/");
-    if (loc == path.npos)
-      loc = 0;
-    ++loc;
-    path.substr(loc, 2).getAsInteger(10, m->regionX);
-    path.substr(loc + 3, 2).getAsInteger(10, m->regionY);
+    name.substr(0, 2).getAsInteger(10, m->regionX);
+    name.substr(3, 2).getAsInteger(10, m->regionY);
   }
 
-  if (m->points.size() == 0)
-    return;
+  if (m->points.size() != 0)
+    loadBSP(m);
 
-  // Shink model.
+  std::vector<std::shared_ptr<l2p::ATerrainInfo>> terrains;
+  package->GetObjects("TerrainInfo", terrains);
+
+  for (auto i = terrains.begin(), e = terrains.end(); i != e; ++i) {
+    loadTerrain(*i);
+  }
+}
+
+void TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m) {
+  l2p::Name name = m->package->name;
   std::vector<float> vertex_data;
   std::vector<uint32_t> index_buf;
-  L2Package::Box bounds;
+  l2p::Box bounds;
 
   // Build vertex and index buffer.
   for (auto ni = m->nodes.begin(), ne = m->nodes.end(); ni != ne; ++ni) {
-    L2Package::BSPNode &n = *ni;
-    L2Package::BSPSurface &s = m->surfaces[n.surface];
+    l2p::BSPNode &n = *ni;
+    l2p::BSPSurface &s = m->surfaces[n.surface];
 
-    if (ignoreNode(m, n, s))
+    if (ignoreNode(m.get(), n, s))
       continue;
 
     uint32_t vert_start = vertex_data.size() / 6;
 
     // Vertex buffer.
     if (n.num_verticies > 0) {
-      L2Package::Vector Normal = m->vectors[s.normal];
+      l2p::Vector Normal = m->vectors[s.normal];
 
       for (uint32_t vert_index = 0; vert_index < n.num_verticies; ++vert_index) {
-        const L2Package::Vector &pos = m->points[m->vertexes[n.vert_pool + vert_index].vertex];
+        const l2p::Vector &pos = m->points[m->vertexes[n.vert_pool + vert_index].vertex];
         bounds += pos;
         vertex_data.push_back(pos.X);
         vertex_data.push_back(pos.Y);
@@ -110,9 +117,9 @@ void TutorialApplication::loadMap(L2Package::StringRef path) {
         vertex_data.push_back(Normal.Z);
       }
 
-      if (s.flags & L2Package::PF_TwoSided) {
+      if (s.flags & l2p::PF_TwoSided) {
         for (uint32_t vert_index = 0; vert_index < n.num_verticies; ++vert_index) {
-          const L2Package::Vector &pos = m->points[m->vertexes[n.vert_pool + vert_index].vertex];
+          const l2p::Vector &pos = m->points[m->vertexes[n.vert_pool + vert_index].vertex];
           vertex_data.push_back(pos.X);
           vertex_data.push_back(pos.Y);
           vertex_data.push_back(pos.Z);
@@ -129,7 +136,7 @@ void TutorialApplication::loadMap(L2Package::StringRef path) {
       index_buf.push_back(vert_start + verti - 1);
       index_buf.push_back(vert_start + verti);
     }
-    if (s.flags & L2Package::PF_TwoSided) {
+    if (s.flags & l2p::PF_TwoSided) {
       for (int verti = 2; verti < n.num_verticies; ++verti) {
         index_buf.push_back(vert_start);
         index_buf.push_back(vert_start + verti);
@@ -138,7 +145,7 @@ void TutorialApplication::loadMap(L2Package::StringRef path) {
     }
   }
 
-  Ogre::MeshPtr mesh = Ogre::MeshManager::getSingleton().createManual(Ogre::String(path) + Ogre::String(m->name), "General");
+  Ogre::MeshPtr mesh = Ogre::MeshManager::getSingleton().createManual(Ogre::String(name) + Ogre::String(m->name), "General");
   Ogre::VertexData  *data = new Ogre::VertexData();
   mesh->sharedVertexData = data;
   data->vertexCount = vertex_data.size() / 6;
@@ -177,8 +184,117 @@ void TutorialApplication::loadMap(L2Package::StringRef path) {
 
   mesh->load();
 
-  Ogre::Entity *ent = mSceneMgr->createEntity(Ogre::String(path) + Ogre::String(m->name) + "E", Ogre::String(path) + Ogre::String(m->name));
-  ent->setUserAny(Ogre::Any(static_cast<L2Package::UObject*>(m)));
+  Ogre::Entity *ent = mSceneMgr->createEntity(Ogre::String(name) + Ogre::String(m->name) + "E", Ogre::String(name) + Ogre::String(m->name));
+  ent->setUserAny(Ogre::Any(static_cast<l2p::UObject*>(m.get())));
+  Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
+  node->attachObject(ent);
+  node->showBoundingBox(true);
+}
+
+struct BufferVert {
+  Ogre::Vector3 position;
+  Ogre::Vector3 normal;
+};
+
+void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
+  l2p::Name name = ti->package->name;
+  std::vector<BufferVert> vertex_buffer;
+  std::vector<uint32_t> index_buffer;
+  std::vector<uint16_t> &height_map = ti->terrain_map->G16_data;
+  Ogre::Vector3 location = ogre_cast(ti->location);
+  Ogre::Vector3 scale = ogre_cast(ti->terrain_scale);
+  int32_t USize = ti->terrain_map->USize;
+  int32_t VSize = ti->terrain_map->VSize;
+
+  Ogre::Vector3 translation( location.x - ((USize >> 1) * scale.x)
+                           , location.y - ((VSize >> 1) * scale.y)
+                           , location.z - (128 * scale.z)
+                           );
+
+  vertex_buffer.reserve(USize * VSize);
+  Ogre::AxisAlignedBox box;
+  for (int y = 0; y < VSize; ++y) {
+    for (int x = 0; x < USize; ++x) {
+      Ogre::Vector3 v( (x * scale.x) + translation.x
+                     , (y * scale.y) + translation.y
+                     , (height_map[(y * USize) + x] * (scale.z / 256.f)) + translation.z
+                     );
+      box.merge(v);
+      BufferVert bv = {v, Ogre::Vector3(0.f, 0.f, 0.f)};
+      vertex_buffer.push_back(bv);
+    }
+  }
+
+  for (int y = 0; y < VSize - 1; ++y) {
+    for (int x = 0; x < USize - 1; ++x) {
+      // First part of quad.
+      index_buffer.push_back(x + (y * USize));
+      index_buffer.push_back((x + 1) + (y * USize));
+      index_buffer.push_back((x + 1) + ((y + 1) * USize));
+      // Second part of quad.
+      index_buffer.push_back(x + (y * USize));
+      index_buffer.push_back((x + 1) + ((y + 1) * USize));
+      index_buffer.push_back(x + ((y + 1) * USize));
+    }
+  }
+
+  // Generate normals!
+  for (int i = 0; i < index_buffer.size() / 3; ++i) {
+    Ogre::Vector3 a = vertex_buffer[index_buffer[i * 3 + 1]].position - vertex_buffer[index_buffer[i * 3]].position;
+    Ogre::Vector3 b = vertex_buffer[index_buffer[i * 3]].position - vertex_buffer[index_buffer[i * 3 + 2]].position;
+    Ogre::Vector3 normal = b.crossProduct(a);
+    normal.normalise();
+    vertex_buffer[index_buffer[i * 3]].normal += normal;
+    vertex_buffer[index_buffer[i * 3 + 1]].normal += normal;
+    vertex_buffer[index_buffer[i * 3 + 2]].normal += normal;
+  }
+
+  for (int i = 0; i < vertex_buffer.size(); ++i) {
+    vertex_buffer[i].normal.normalise();
+    //vertex_buffer[i].normal.x *= -1;
+    //vertex_buffer[i].normal.y *= -1;
+  }
+
+  Ogre::MeshPtr mesh = Ogre::MeshManager::getSingleton().createManual(Ogre::String(name) + Ogre::String(ti->name), "General");
+  Ogre::VertexData  *data = new Ogre::VertexData();
+  mesh->sharedVertexData = data;
+  data->vertexCount = vertex_buffer.size();
+
+  Ogre::VertexDeclaration *decl = data->vertexDeclaration;
+  uint32_t offset = 0;
+  decl->addElement(0, offset, Ogre::VET_FLOAT3, Ogre::VES_POSITION);
+  offset += Ogre::VertexElement::getTypeSize(Ogre::VET_FLOAT3);
+  decl->addElement(0, offset, Ogre::VET_FLOAT3, Ogre::VES_NORMAL);
+  offset += Ogre::VertexElement::getTypeSize(Ogre::VET_FLOAT3);
+
+  Ogre::HardwareVertexBufferSharedPtr vbuf =
+    Ogre::HardwareBufferManager::getSingleton().createVertexBuffer(
+      offset,
+      data->vertexCount,
+      Ogre::HardwareBuffer::HBU_STATIC_WRITE_ONLY);
+  vbuf->writeData(0, vbuf->getSizeInBytes(), &vertex_buffer.front(), true);
+  data->vertexBufferBinding->setBinding(0, vbuf);
+
+  // Setup index buffer.
+  Ogre::HardwareIndexBufferSharedPtr ibuf =
+    Ogre::HardwareBufferManager::getSingleton().createIndexBuffer(
+      Ogre::HardwareIndexBuffer::IT_32BIT,
+      index_buffer.size(),
+      Ogre::HardwareBuffer::HBU_STATIC_WRITE_ONLY);
+
+  ibuf->writeData(0, ibuf->getSizeInBytes(), &index_buffer.front(), true);
+  Ogre::SubMesh *subMesh = mesh->createSubMesh();
+  subMesh->useSharedVertices = true;
+  subMesh->indexData->indexBuffer = ibuf;
+  subMesh->indexData->indexCount  = index_buffer.size();
+  subMesh->indexData->indexStart  = 0;
+
+  mesh->_setBounds(box);
+  mesh->_setBoundingSphereRadius((std::max(box.getMaximum().x - box.getMinimum().x, std::max(box.getMaximum().y - box.getMinimum().y, box.getMaximum().z - box.getMinimum().z))) / 2.0);
+
+  mesh->load();
+
+  Ogre::Entity *ent = mSceneMgr->createEntity(Ogre::String(name) + Ogre::String(ti->name) + "E", Ogre::String(name) + Ogre::String(ti->name));
   Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
   node->attachObject(ent);
   node->showBoundingBox(true);
@@ -194,30 +310,32 @@ void TutorialApplication::createScene(void)
   Ogre::Light *l = mSceneMgr->createLight("MainLight");
   l->setPosition(20, 80, 50);
 
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\23_12.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\22_13.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\18_14.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\25_14.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\26_14.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\21_16.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\24_16.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\20_18.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\24_18.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\21_19.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\22_19.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\23_20.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\19_21.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\20_21.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\17_22.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\20_22.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\22_22.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\22_23.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\23_24.unr");
-  loadMap("G:\\Program Files (x86)\\NCsoft\\Lineage II\\MAPS\\17_25.unr");
+  l2p::Package::Initialize("G:\\Program Files (x86)\\NCsoft\\Lineage II\\");
+
+  loadMap("23_12");
+  loadMap("22_13");
+  loadMap("18_14");
+  loadMap("25_14");
+  loadMap("26_14");
+  loadMap("21_16");
+  loadMap("24_16");
+  loadMap("20_18");
+  loadMap("24_18");
+  loadMap("21_19");
+  loadMap("22_19");
+  loadMap("23_20");
+  loadMap("19_21");
+  loadMap("20_21");
+  loadMap("17_22");
+  loadMap("20_22");
+  loadMap("22_22");
+  loadMap("22_23");
+  loadMap("23_24");
+  loadMap("17_25");
 }
 
-bool BSPLineIntersectRecurse(L2Package::UModel *m, const Ogre::Ray &ray, int node_index, Ogre::Vector3 &result) {
-  L2Package::BSPNode &n = m->nodes[node_index];
+bool BSPLineIntersectRecurse(l2p::UModel *m, const Ogre::Ray &ray, int node_index, Ogre::Vector3 &result) {
+  l2p::BSPNode &n = m->nodes[node_index];
   Ogre::Plane plane(n.plane.X, n.plane.Y, n.plane.Z, n.plane.W);
   Ogre::Plane::Side side = plane.getSide(ray.getOrigin());
 
@@ -245,7 +363,7 @@ bool BSPLineIntersectRecurse(L2Package::UModel *m, const Ogre::Ray &ray, int nod
     // Check this node.
     if (!ignoreNode(m, n, m->surfaces[n.surface])) {
       for (int verti = 2; verti < n.num_verticies; ++verti) {
-        L2Package::Vector a = m->points[m->vertexes[n.vert_pool].vertex],
+        l2p::Vector a = m->points[m->vertexes[n.vert_pool].vertex],
                           b = m->points[m->vertexes[n.vert_pool + verti - 1].vertex],
                           c = m->points[m->vertexes[n.vert_pool + verti].vertex];
         auto res = Ogre::Math::intersects(ray,
@@ -267,7 +385,7 @@ bool BSPLineIntersectRecurse(L2Package::UModel *m, const Ogre::Ray &ray, int nod
   return false;
 }
 
-Ogre::Vector3 BSPLineIntersect(L2Package::UModel *m, Ogre::Ray ray) {
+Ogre::Vector3 BSPLineIntersect(l2p::UModel *m, Ogre::Ray ray) {
   // Transform ray into BSP space.
   Ogre::Matrix4 bspspace = Ogre::Matrix4::IDENTITY;
   bspspace.setScale(Ogre::Vector3(-50, 50, 50));
@@ -297,7 +415,7 @@ bool TutorialApplication::mousePressed(const OIS::MouseEvent &arg, OIS::MouseBut
 
     for (auto i = result.begin(), e = result.end(); i != e; ++i) {
       if (i->movable) {
-        L2Package::UModel *m = dynamic_cast<L2Package::UModel*>(Ogre::any_cast<L2Package::UObject*>(i->movable->getUserAny()));
+        l2p::UModel *m = dynamic_cast<l2p::UModel*>(Ogre::any_cast<l2p::UObject*>(i->movable->getUserAny()));
         BSPLineIntersect(m, cam_ray);
       }
     }
