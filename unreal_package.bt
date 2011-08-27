@@ -1,0 +1,629 @@
+//--------------------------------------
+//--- 010 Editor v3.2 Binary Template
+//
+// File:
+// Author:
+// Revision:
+// Purpose:
+//--------------------------------------
+
+typedef struct {
+    uint32 A, B, C, D;
+} GUID;
+
+typedef struct {
+    int32 export_count;
+    int32 name_count;
+} Generation;
+
+typedef struct {
+    int32 signature;
+    int16 version;
+    int16 licensee_mode;
+    int32 package_flags;
+    int32 name_count;
+    int32 name_offset;
+    int32 export_count;
+    int32 export_offset;
+    int32 import_count;
+    int32 import_offset;
+    GUID guid;
+    int32 generation_count;
+    Generation generations[generation_count];
+} Header;
+
+typedef struct {
+    byte b;
+    if (b & (1 << 6)) {
+        local int shift = 6;
+        do {
+            byte b;
+            shift += 7;
+        } while ((b & (1 << 7)) && (shift < 32));
+    }
+} Index <read=IndexRead>;
+
+int IndexReadInt(Index &i) {
+    local int neg = i.b[0] & (1 << 7);
+    local int index = i.b[0] & 0x3f;
+
+    if (i.b[0] & (1 << 6)) {
+        local int shift = 6;
+        local int data;
+        local int j = 1;
+        local byte b;
+        do {
+            b = i.b[j++];
+            data = b & 0x7f;
+            data <<= shift;
+            index |= data;
+            shift += 7;
+        } while ((b & (1 << 7)) && (shift < 32));
+    }
+
+    if (neg)
+        index = -index;
+
+    return index;
+}
+
+string IndexRead(Index &i) {
+    string s;
+    SPrintf(s, "%d", IndexReadInt(i));
+    return s;
+}
+
+typedef struct {
+    Index len;
+    char str[IndexReadInt(len)];
+    uint32 flags;
+} Name;
+
+Header h;
+FSeek(h.name_offset);
+Name name_table[h.name_count] <optimize=false>;
+
+const uint32 RF_HasStack = 0x02000000;
+const uint32 RF_Native = 0x04000000;
+
+typedef struct {
+    uint32 flags;
+} ObjectFlags <read=ObjectFlagsRead>;
+
+string ObjectFlagsRead(ObjectFlags &of) {
+    string s;
+    if (of.flags & 0x00000001)
+        s += "RF_Transactional | ";
+    if (of.flags & 0x00000002)
+        s += "RF_Unreachable | ";
+    if (of.flags & 0x00000004)
+        s += "RF_Public | ";
+    if (of.flags & 0x00000008)
+        s += "RF_TagImp | ";
+    if (of.flags & 0x00000010)
+        s += "RF_TagExp | ";
+    if (of.flags & 0x00000020)
+        s += "RF_SourceModified | ";
+    if (of.flags & 0x00000040)
+        s += "RF_TagGarbage | ";
+    if (of.flags & 0x00000200)
+        s += "RF_NeedLoad | ";
+    if (of.flags & 0x00000400)
+        s += "(RF_HighlightedName | RF_EliminateObject) | ";
+    if (of.flags & 0x00000800)
+        s += "(RF_InSingularFunc | RF_RemappedName) | ";
+    if (of.flags & 0x00001000)
+        s += "(RF_Suppress | RF_StateChanged) | ";
+    if (of.flags & 0x00002000)
+        s += "RF_InEndState | ";
+    if (of.flags & 0x00004000)
+        s += "RF_Transient | ";
+    if (of.flags & 0x00008000)
+        s += "RF_PreLoading | ";
+    if (of.flags & 0x00010000)
+        s += "RF_LoadForClient | ";
+    if (of.flags & 0x00020000)
+        s += "RF_LoadForServer | ";
+    if (of.flags & 0x00040000)
+        s += "RF_LoadForEdit | ";
+    if (of.flags & 0x00080000)
+        s += "RF_Standalone | ";
+    if (of.flags & 0x00100000)
+        s += "RF_NotForClient | ";
+    if (of.flags & 0x00200000)
+        s += "RF_NotForServer | ";
+    if (of.flags & 0x00400000)
+        s += "RF_NotForEdit | ";
+    if (of.flags & 0x00800000)
+        s += "RF_Destroyed | ";
+    if (of.flags & 0x01000000)
+        s += "RF_NeedPostLoad | ";
+    if (of.flags & 0x02000000)
+        s += "RF_HasStack | ";
+    if (of.flags & 0x04000000)
+        s += "RF_Native | ";
+    if (of.flags & 0x08000000)
+        s += "RF_Marked | ";
+    if (of.flags & 0x10000000)
+        s += "RF_ErrorShutdown | ";
+    if (of.flags & 0x20000000)
+        s += "RF_DebugPostLoad | ";
+    if (of.flags & 0x40000000)
+        s += "RF_DebugSerialize | ";
+    if (of.flags & 0x80000000)
+        s += "RF_DebugDestroy";
+    return s;
+}
+
+typedef struct {
+    Index index;
+} FName <read=FNameRead>;
+
+string FNameRead(FName &n) {
+    local int32 index = IndexReadInt(n.index);
+    if (index < 0 || index >= h.name_count)
+        return "<invalid-name-index>";
+    return name_table[IndexReadInt(n.index)].str;
+}
+
+typedef struct {
+    Index index;
+} FClass <read=FClassRead>;
+
+typedef struct {
+    FClass class;
+    FClass super;
+    uint32 package;
+    FName name;
+    ObjectFlags flags;
+    Index serial_size;
+    local int _size = IndexReadInt(serial_size);
+    if (_size > 0)
+        Index serial_offset;
+} Export;
+
+typedef struct {
+    FName class_package;
+    FName class_name;
+    int32 package;
+    FName object_name;
+} Import;
+
+FSeek(h.export_offset);
+Export export_table[h.export_count] <optimize=false>;
+FSeek(h.import_offset);
+Import import_table[h.import_count] <optimize=false>;
+
+string FClassRead(FClass &c) {
+    local int32 i = IndexReadInt(c.index);
+    if (i == 0)
+        return "None";
+    if (i < 0)
+        return FNameRead(import_table[(-i) - 1].class_package) + "." + FNameRead(import_table[(-i) - 1].class_name) + "'" + FNameRead(import_table[(-i) - 1].object_name) + "'";
+    return FClassRead(export_table[i - 1].class) + "'" + FNameRead(export_table[i - 1].name) + "'";
+}
+
+// Parse export table objects.
+typedef struct {
+    float X, Y, Z;
+} Vector;
+
+typedef struct {
+    byte b;
+    if (b < 128)
+        break;
+    if (b & 0x80) {
+        byte b;
+    } else if (b & 0xC0) {
+        byte b;
+        byte b;
+        byte b;
+    }
+} ArrayIndex;
+
+typedef struct {
+    int32 pitch;
+    int32 yaw;
+    int32 roll;
+} Rotator;
+
+typedef struct {
+    FName name;
+    if (FNameRead(name) == "None")
+        break;
+    ubyte type : 4;
+    ubyte size : 3;
+    ubyte is_array : 1;
+    if (type == 10) // struct.
+        FName struct_name;
+    local int _size;
+    switch (size) {
+    case 0: _size = 1; break;
+    case 1: _size = 2; break;
+    case 2: _size = 4; break;
+    case 3: _size = 12; break;
+    case 4: _size = 16; break;
+    case 5: ubyte s; _size = s; break;
+    case 6: uint16 s; _size = s; break;
+    case 7: uint32 s; _size = s; break;
+    }
+    if (type == 3) break; // Boolean.
+    if (is_array) {
+        ArrayIndex array_index;
+    }
+    switch (type) {
+    case 0x01: byte value; break;
+    case 0x02: int32 value; break;
+    // Skip boolean.
+    case 0x04: float value; break;
+    case 0x05: FClass value; break;
+    case 0x06: FClass value; break;
+    case 0x07: char value[_size]; break; // String
+    case 0x08: char value[_size]; break; // Class
+    case 0x09: char value[_size]; break; // Array
+    case 0x0A: 
+        if (FNameRead(struct_name) == "Vector")
+            Vector value;
+        else if (FNameRead(struct_name) == "Rotator")
+            Rotator value;
+        else
+            char value[_size];
+        break; // Struct
+    case 0x0B: char value[_size]; break; // Vector
+    case 0x0C: Rotator value; break; // Rotator
+    case 0x0D: char value[_size]; break; // Str
+    case 0x0E: char value[_size]; break; // Map
+    case 0x0F: char value[_size]; break; // FixedArray
+    }
+} Property;
+
+typedef struct {
+    Vector min;
+    Vector max;
+    ubyte is_valid;
+} Box;
+
+typedef struct {
+    Vector location;
+    float radius;
+} Sphere;
+
+typedef struct {
+    Vector location;
+    float w;
+} Plane;
+
+typedef struct {
+    Plane plane;
+    uint64 zone_mask;
+    ubyte node_flags;
+    Index vert_pool;
+    Index surf;
+    Index back;
+    Index front;
+    Index i_plane;
+    Index collision_bound;
+    Index render_bound;
+    Vector unknown_point;
+    uint32 unknown_id;
+    uint64 conn_zones;
+    uint64 vis_zones;
+    Index zone[2] <optimize=false>;
+    ubyte num_verticies;
+    int32 leaf[2];
+    ubyte unk[0xC];
+} BSPNode;
+
+typedef struct {
+    FClass material;
+    uint32 poly_flags;
+    Index base;
+    Index normal;
+    Index textureU;
+    Index textureV;
+    Index brush_poly;
+    FClass actor;
+    Plane plane;
+    uint32 unknown;
+    uint32 unknown;
+} BSPSurface;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        Vector data[_size];
+} VectorArray;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        BSPNode data[_size] <optimize=false>;
+} BSPNodeArray;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        BSPSurface data[_size] <optimize=false>;    
+} BSPSurfaceArray;
+
+typedef struct {
+    Index vertex;
+    Index side;
+} Vertex;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        Vertex data[_size] <optimize=false>;    
+} VertexArray;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        Box data[_size] <optimize=false>;    
+} BoxArray;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        uint32 data[_size];   
+} IntArray;
+
+typedef struct {
+    Index zone_actor;
+    uint64 connectivity;
+    uint64 visibility;
+    float last_render_time;
+} ZoneProperties;
+
+typedef struct {
+    Index zone;
+    Index permeating;
+    Index volumetric;
+    uint64 visible_zones;
+} Leaf;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        Leaf data[_size] <optimize=false>;    
+} LeafArray;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        FClass data[_size] <optimize=false>;    
+} ClassArray;
+
+typedef struct {
+    Vector point;
+    Plane plane;
+    Vector vector;
+} UnknownSubStruct;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        UnknownSubStruct data[_size]; 
+} UnknownSubStructArray;
+
+typedef struct {
+    UnknownSubStructArray substructs;
+    uint32 int1;
+    Index material_index;
+    uint32 int2;
+    uint32 int3;
+    uint32 int4;
+} UnknownStruct;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        UnknownStruct data[_size] <optimize=false>; 
+} UnknownStructArray;
+
+typedef struct {
+    Index len;
+    local int _len = IndexReadInt(len);
+    if (_len < 0) {
+        int16 str[-_len];
+    } else {
+        char str[_len];
+    }
+} String;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        String data[_size] <optimize=false>; 
+} StringArray;
+
+typedef struct {
+    String protocol;
+    String host;
+    if (IndexReadInt(host.len) > 1)
+        uint32 port;
+    String map;
+    StringArray op;
+    String portal;
+} URL;
+
+typedef struct {
+    int32 distance;
+    FClass start;
+    FClass end;
+    int32 collision_radius;
+    int32 collision_height;
+    uint32 reach_flags;
+    ubyte pruned;
+} ReachSpec;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        ReachSpec data[_size] <optimize=false>; 
+} ReachSpecArray;
+
+typedef struct {
+    uint32 unknown;
+    uint32 offset_size;
+    uint16 vertex_max;
+    uint16 triangle_count;
+    uint16 triangle_max;
+} StaticMeshSurf;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        StaticMeshSurf data[_size]; 
+} StaticMeshSurfArray;
+
+typedef struct {
+    Vector point;
+    Vector normal;
+} SMeshVertex;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        SMeshVertex data[_size]; 
+} SMeshVertexArray;
+
+typedef struct {
+    byte b, g, r, a;
+} Color;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        Color data[_size]; 
+} ColorArray;
+
+typedef struct {
+    float u;
+    float v;
+} SMeshCoord;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        SMeshCoord data[_size]; 
+} SMeshCoordArray;
+
+typedef struct {
+    SMeshCoordArray elements;
+    uint32 unknown;
+    uint32 unknown;
+} SMeshCoords;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        SMeshCoords data[_size] <optimize=false>;
+} SMeshCoordsArray;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        uint16 data[_size]; 
+} uint16Array;
+
+typedef struct (Export &e) {
+    if (e.flags.flags & RF_HasStack) {
+        Index node;
+        Index state_node;
+        uint64 probe_mask;
+        int32 latent_action;
+        if (IndexReadInt(node) != 0)
+            Index offset;
+    }
+    // Properties
+    while (!(e.flags.flags & RF_Native)) {
+        Property property;
+        if (FNameRead(property.name) == "None")
+            break;
+    }
+
+    if (FClassRead(e.class) == "Core.Class'Model'") {
+        Box bounding_box;
+        Sphere bounding_sphere;
+        VectorArray vectors;
+        VectorArray points;
+        BSPNodeArray nodes <bgcolor=cRed>;
+        BSPSurfaceArray surfaces;
+        VertexArray vertexes;
+        uint32 num_shared_sides;
+        uint32 num_zones;
+        if (num_zones > 0)
+            ZoneProperties zones[num_zones] <optimize=false>;
+        FClass polys;
+        BoxArray bounds;
+        IntArray leaf_hulls;
+        LeafArray leaves;
+        ClassArray lights;
+        int32 root_outside;
+        int32 linked;
+        // UnknownStructArray unknown_data;
+    } else if (FClassRead(e.class) == "Core.Class'Texture'") {
+        char stuff[36];
+        Index number_of_something;
+        Index name_len;
+        char name[IndexReadInt(name_len)];
+        char huh;
+        Index shader_len;
+        char shader[IndexReadInt(shader_len)];
+        char more_stuff[12];
+    } else if (FClassRead(e.class) == "Core.Class'StaticMesh'") {
+        Box bounding_box;
+        Sphere bounding_sphere;
+        StaticMeshSurfArray surfaces;
+        Box another_bounding_box;
+        SMeshVertexArray vertexes;
+        uint32 unknown;
+        ColorArray vertex_colors_1;
+        uint32 unknown;
+        ColorArray vertex_colors_2;
+        uint32 unknown;
+        SMeshCoordsArray texture_coords;
+        uint16Array vertex_indices_1;
+        uint32 unknown;
+        uint16Array vertex_indices_2;
+        uint32 unknown;
+    }
+
+
+/* else if (FClassRead(e.class) == "Core.Class'Level'" && FNameRead(e.name) == "myLevel") {
+        uint32 db_num;
+        uint32 db_max;
+        FClass actors[db_num] <optimize=false>;
+    }*/
+} ExportData;
+
+local int i;
+local int32 _size;
+for (i = 0; i < h.export_count; i++) {
+    _size = IndexReadInt(export_table[i].serial_size);
+    if (_size == 0)
+        continue;
+
+    FSeek(IndexReadInt(export_table[i].serial_offset));
+    ExportData export_data(export_table[i]);
+}

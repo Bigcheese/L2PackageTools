@@ -1,0 +1,54 @@
+//--------------------------------------
+//--- 010 Editor v3.2 Script File
+//
+// File:
+// Author:
+// Revision:
+// Purpose:
+//--------------------------------------
+
+int instance = 4358;
+
+void printVertex(Vertex &v) {
+    Printf("%f %f %f\n", v.X, v.Y, v.Z);
+}
+
+int node_count = IndexReadInt(export_data[instance].nodes.count);
+int point_count = IndexReadInt(export_data[instance].points.count);
+int i;
+int vert_count;
+int j;
+int vert_pool;
+int vert_index;
+int nodes_printed;
+
+Printf("ply\nformat ascii 1.0\nelement vertex %d\nproperty float x\nproperty float y\nproperty float z\nelement face %d\nproperty list uchar int vertex_indices\nend_header\n",
+       point_count,
+       node_count
+       );
+
+for (i = 0; i < point_count; ++i) {
+    printVertex(export_data[instance].points.data[i]);
+}
+
+int printNode(BSPNode &n, BSPSurface &s) {
+    if (IndexReadInt(s.material.index) == 0)
+        return 0;
+    if (s.poly_flags & 1)
+        return 0;
+    vert_count = n.num_verticies;
+    vert_pool = IndexReadInt(n.vert_pool);
+    Printf("%d ", vert_count);
+    for (j = 0; j < vert_count; ++j) {
+        Printf("%d ", IndexReadInt(export_data[instance].vertexes.data[vert_pool + j].vertex));
+    }
+    Printf("\n");
+    ++nodes_printed;
+    return 0;
+}
+
+for (i = 0; i < node_count; ++i) {
+    printNode(export_data[instance].nodes.data[i], export_data[instance].surfaces.data[IndexReadInt(export_data[instance].nodes.data[i].surf)]);
+}
+
+Printf("%d\n", nodes_printed);

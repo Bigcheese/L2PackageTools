@@ -1,0 +1,39 @@
+//--------------------------------------
+//--- 010 Editor v3.2 Script File
+//
+// File:
+// Author:
+// Revision:
+// Purpose:
+//--------------------------------------
+
+int i;
+int j;
+string propname;
+
+void printVertex(Vertex &v) {
+    Printf("%f %f %f\n", v.X / 100, v.Y / 100, v.Z / 100);
+}
+
+for (i = 0; i < h.export_count; ++i) {
+    if (FClassRead(export_table[i].class) == "Core.Class'StaticMeshActor'") {
+        Printf("StaticMeshActor:%s\n", FNameRead(export_table[i].name));
+        j = 0;
+        propname = FNameRead(export_data[i].property[j].name);
+        while (propname != "None") {
+            if (propname == "StaticMesh") {
+                Printf("    StaticMesh: %s\n", FClassRead(export_data[i].property[j].value));
+            } else if (propname == "Location") {
+                Printf("    Location: ");
+                printVertex(export_data[i].property[j].value);
+            } else if (propname == "Rotation") {
+                Printf("    Rotator: %d %d %d\n", export_data[i].property[j].value.pitch
+                                                , export_data[i].property[j].value.yaw
+                                                , export_data[i].property[j].value.roll
+                                                );
+            }
+            ++j;
+            propname = FNameRead(export_data[i].property[j].name);
+        }
+    }
+}
