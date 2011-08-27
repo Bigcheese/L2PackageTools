@@ -1,6 +1,6 @@
 //===- UObject.cpp - Lineage II client package objects ----------*- C++ -*-===//
 //
-// L2Package
+// L2PackageTools
 //
 // This file is distributed under the Simplified BSD License. See LICENSE.TXT
 // for details.

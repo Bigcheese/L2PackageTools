@@ -1,20 +1,19 @@
-#-----------------------------------------------------------------------------
-#Filename:    CMakeLists.txt
-#-----------------------------------------------------------------------------
+#===- CMakeLists.txt --------------------------------------------------------===
 #
-#This source file is part of the
-#   ___                 __    __ _ _    _
-#  /___\__ _ _ __ ___  / / /\ \ (_) | _(_)
-# //  // _` | '__/ _ \ \ \/  \/ / | |/ / |
-#/ \_// (_| | | |  __/  \  /\  /| |   <| |
-#\___/ \__, |_|  \___|   \/  \/ |_|_|\_\_|
-#      |___/
-#      Tutorial Framework
-#      http://www.ogre3d.org/tikiwiki/
-#-----------------------------------------------------------------------------
-cmake_minimum_required(VERSION 2.6)
+# L2PackageTools
+#
+# This file is distributed under the Simplified BSD License. See LICENSE.TXT
+# for details.
+#
+#===-------------------------------------------------------------------------===
+#
+# This is the make CMake file for L2PackageTools
+#
+#===-------------------------------------------------------------------------===
 
-project(OgreApp)
+cmake_minimum_required(VERSION 2.8)
+
+project(L2PackageTools)
 
 if(WIN32)
   set(CMAKE_MODULE_PATH "$ENV{OGRE_HOME}/CMake/;${CMAKE_MODULE_PATH}")
@@ -50,10 +49,6 @@ set(CMAKE_DEBUG_POSTFIX "_d")
 set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/dist")
 
 find_package(OGRE REQUIRED)
-
-#if(NOT "${OGRE_VERSION_NAME}" STREQUAL "Cthugha")
-#  message(SEND_ERROR "You need Ogre 1.7 Cthugha to build this.")
-#endif()
 
 find_package(OIS REQUIRED)
 
@@ -113,20 +108,20 @@ include_directories( ${OIS_INCLUDE_DIRS}
   ${OGRE_SAMPLES_INCLUDEPATH}
 )
 
-add_executable(OgreApp WIN32 ${HDRS} ${SRCS})
+add_executable(L2MapViewer WIN32 ${HDRS} ${SRCS})
 
-set_target_properties(OgreApp PROPERTIES DEBUG_POSTFIX _d)
+set_target_properties(L2MapViewer PROPERTIES DEBUG_POSTFIX _d)
 
-target_link_libraries(OgreApp ${OGRE_LIBRARIES} ${OIS_LIBRARIES} l2p)
+target_link_libraries(L2MapViewer ${OGRE_LIBRARIES} ${OIS_LIBRARIES} l2p)
 
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/dist/bin)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/dist/media)
 
 # post-build copy for win32
 if(WIN32 AND NOT MINGW)
-  add_custom_command( TARGET OgreApp PRE_BUILD
+  add_custom_command( TARGET L2MapViewer PRE_BUILD
     COMMAND if not exist .\\dist\\bin mkdir .\\dist\\bin )
-  add_custom_command( TARGET OgreApp POST_BUILD
+  add_custom_command( TARGET L2MapViewer POST_BUILD
     COMMAND copy \"$(TargetPath)\" .\\dist\\bin )
 endif(WIN32 AND NOT MINGW)
 
@@ -136,7 +131,7 @@ endif(MINGW OR UNIX)
 
 if(WIN32)
 
-  install(TARGETS OgreApp
+  install(TARGETS L2MapViewer
     RUNTIME DESTINATION bin
     CONFIGURATIONS All)
 
@@ -162,7 +157,7 @@ if(WIN32)
   install(FILES ${OGRE_PLUGIN_DIR_REL}/OgreMain.dll
     ${OGRE_PLUGIN_DIR_REL}/RenderSystem_Direct3D9.dll
     ${OGRE_PLUGIN_DIR_REL}/RenderSystem_GL.dll
-    ${OGRE_PLUGIN_DIR_REL}/libOIS.dll
+    ${OGRE_PLUGIN_DIR_REL}/OIS.dll
     DESTINATION bin
     CONFIGURATIONS Release RelWithDebInfo
   )
@@ -170,7 +165,7 @@ if(WIN32)
   install(FILES ${OGRE_PLUGIN_DIR_DBG}/OgreMain_d.dll
     ${OGRE_PLUGIN_DIR_DBG}/RenderSystem_Direct3D9_d.dll
     ${OGRE_PLUGIN_DIR_DBG}/RenderSystem_GL_d.dll
-    ${OGRE_PLUGIN_DIR_DBG}/libOIS_d.dll
+    ${OGRE_PLUGIN_DIR_DBG}/OIS_d.dll
     DESTINATION bin
     CONFIGURATIONS Debug
   )
@@ -192,7 +187,7 @@ endif(WIN32)
 
 if(UNIX)
 
-  install(TARGETS OgreApp
+  install(TARGETS L2MapViewer
     RUNTIME DESTINATION bin
     CONFIGURATIONS All)
 
