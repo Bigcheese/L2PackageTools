@@ -203,7 +203,6 @@ void TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m) {
   mesh->load();
 
   Ogre::Entity *ent = mSceneMgr->createEntity(Ogre::String(name) + Ogre::String(m->name) + "E", Ogre::String(name) + Ogre::String(m->name));
-  ent->setCastShadows(true);
   ent->setUserAny(Ogre::Any(static_cast<l2p::UObject*>(m.get())));
   Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
   node->attachObject(ent);
@@ -567,6 +566,7 @@ void TutorialApplication::loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshAc
   ent_name += ".";
   ent_name += sma->name;
   Ogre::Entity *ent = mSceneMgr->createEntity(ent_name, smesh_name, "General");
+  ent->setRenderingDistance(ent->getBoundingRadius() * 50.f);
   Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
   node->attachObject(ent);
   node->setPosition(sma->location.X, sma->location.Y, sma->location.Z);
@@ -583,7 +583,6 @@ void TutorialApplication::createScene(void)
   mUnrealCordNode->setScale(-1.f, 1.f, 1.f);
   mUnrealCordNode->pitch(Ogre::Degree(-90.0f));
   mSceneMgr->setAmbientLight(Ogre::ColourValue(0.5, 0.5, 0.5));
-  mSceneMgr->setShadowTechnique(Ogre::SHADOWTYPE_TEXTURE_MODULATIVE);
   Ogre::Light *l = mSceneMgr->createLight("MainLight");
   l->setType(Ogre::Light::LT_DIRECTIONAL);
   l->setPosition(0, 0, 0);
