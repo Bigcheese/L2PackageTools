@@ -89,6 +89,13 @@ void TutorialApplication::loadMap(l2p::StringRef name) {
   package->GetObjects("StaticMeshActor", smeshes);
 
   for (auto i = smeshes.begin(), e = smeshes.end(); i != e; ++i) {
+    if (  (*i)->bHidden
+       || (*i)->bDeleteMe
+       || !(*i)->bCollideActors
+       || !(*i)->bBlockActors
+       || !(*i)->bBlockPlayers
+       )
+      continue;
     loadStaticMeshActor(*i);
   }
 }
@@ -428,10 +435,10 @@ void TutorialApplication::loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshAc
   Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
   node->attachObject(ent);
   node->setPosition(sma->location.X, sma->location.Y, sma->location.Z);
-  node->pitch(Ogre::Radian(0.000096f) * sma->rotation.pitch);
   node->roll(Ogre::Radian(-0.000096f) * sma->rotation.yaw);
-  node->yaw(Ogre::Radian(-0.000096f) * sma->rotation.roll);
-  node->setScale(ogre_cast(sma->draw_scale_3d));
+  node->yaw(Ogre::Radian(0.000096f) * sma->rotation.pitch);
+  node->pitch(Ogre::Radian(-0.000096f) * sma->rotation.roll);
+  node->setScale(ogre_cast(sma->draw_scale_3d) * sma->draw_scale);
 }
 
 //-------------------------------------------------------------------------------------
