@@ -170,6 +170,8 @@ public:
   //! returns nullptr if the package does not exist or failed to open.
   static Package *GetPackage(StringRef name);
 
+  static Name GetName(StringRef name);
+
   Name name;
 
 private:

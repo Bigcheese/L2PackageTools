@@ -264,6 +264,10 @@ Package *Package::GetPackage(StringRef name) {
   return nullptr;
 }
 
+Name Package::GetName(StringRef name) {
+  return Name::make(*GNames.insert(name).first);
+}
+
 namespace {
 struct NameEntry {
   std::string name;

@@ -18,6 +18,7 @@ This source file is part of the
 #undef GetObject
 #include "l2p/UObject.h"
 
+#include <sstream>
 #include <vector>
 
 Ogre::Vector3 ogre_cast(const l2p::Vector &v) {
@@ -219,6 +220,7 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
   std::vector<BufferVert> vertex_buffer;
   std::vector<Ogre::RGBA> color_buffer;
   std::vector<uint32_t> index_buffer;
+  // Make a copy of height_map because we are going to modify it.
   std::vector<uint16_t> &height_map = ti->terrain_map->G16_data;
   Ogre::Vector3 location = ogre_cast(ti->location);
   Ogre::Vector3 scale = ogre_cast(ti->terrain_scale);
@@ -279,6 +281,139 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
         index_buffer.push_back(x + ((y + 1) * USize));
         index_buffer.push_back((x + 1) + (y * USize));
         index_buffer.push_back((x + 1) + ((y + 1) * USize));
+      }
+    }
+  }
+
+  // We also have to load the nearby highmaps to handle the edges.
+  // TODO: support unloading this data after terrain has been generated.
+  // TODO: Make this code not so repeditive.
+  l2p::Package *terrain_east = nullptr;
+  l2p::Package *terrain_south = nullptr;
+  l2p::Package *terrain_south_east = nullptr;
+  {
+    std::stringstream pname;
+    pname << "T_" << ti->map_x + 1 << "_" << ti->map_y;
+    terrain_east = l2p::Package::GetPackage(pname.str());
+    pname.str(std::string());
+    pname << "T_" << ti->map_x << "_" << ti->map_y + 1;
+    terrain_south = l2p::Package::GetPackage(pname.str());
+    if (terrain_east && terrain_south) {
+      pname.str(std::string());
+      pname << "T_" << ti->map_x + 1 << "_" << ti->map_y + 1;
+      terrain_south_east = l2p::Package::GetPackage(pname.str());
+    }
+    // Inject the extra verticies.
+    if (terrain_south) {
+      pname.str(std::string());
+      pname << ti->map_x << "_" << ti->map_y + 1;
+      std::shared_ptr<l2p::UTexture> tm = std::dynamic_pointer_cast<l2p::UTexture>(terrain_south->GetObject(l2p::Package::GetName(pname.str())));
+      if (tm) {
+        int y = VSize;
+        for (int x = 0; x < USize; ++x) {
+          Ogre::Vector3 v( (x * scale.x) + translation.x
+                         , (y * scale.y) + translation.y
+                         , (tm->G16_data[x] * (scale.z / 256.f)) + translation.z
+                         );
+          box.merge(v);
+          BufferVert bv = {v, Ogre::Vector3(0.f, 0.f, 0.f), 0};
+          float val = -((v.z - min_hight)/(min_hight - max_hight));
+          Ogre::ColourValue cv;
+          if (v.z < sealevel)
+            cv = Ogre::ColourValue(0.f, 0.f, 1.f) * val;
+          else
+            cv = Ogre::ColourValue(0.f, 1.f, 0.f) * val;
+          rs->convertColourValue(cv, &bv.color);
+          vertex_buffer.push_back(bv);
+
+          // First part of quad.
+          if (x != USize - 1) {
+            index_buffer.push_back(x + ((y - 1) * USize));
+            index_buffer.push_back((x + 1) + ((y - 1) * USize));
+            index_buffer.push_back(vertex_buffer.size() - 1);
+          }
+          // Second part of quad.
+          if (x != 0) {
+            index_buffer.push_back(x + ((y - 1) * USize));
+            index_buffer.push_back(vertex_buffer.size() - 1);
+            index_buffer.push_back(vertex_buffer.size() - 2);
+          }
+        }
+      }
+    }
+
+    if (terrain_east) {
+      pname.str(std::string());
+      pname << ti->map_x + 1 << "_" << ti->map_y;
+      std::shared_ptr<l2p::UTexture> tm = std::dynamic_pointer_cast<l2p::UTexture>(terrain_east->GetObject(l2p::Package::GetName(pname.str())));
+      if (tm) {
+        const int x = USize;
+        for (int y = 0; y < VSize; ++y) {
+          Ogre::Vector3 v( (x * scale.x) + translation.x
+                         , (y * scale.y) + translation.y
+                         , (tm->G16_data[y * USize] * (scale.z / 256.f)) + translation.z
+                         );
+          box.merge(v);
+          BufferVert bv = {v, Ogre::Vector3(0.f, 0.f, 0.f), 0};
+          float val = -((v.z - min_hight)/(min_hight - max_hight));
+          Ogre::ColourValue cv;
+          if (v.z < sealevel)
+            cv = Ogre::ColourValue(0.f, 0.f, 1.f) * val;
+          else
+            cv = Ogre::ColourValue(0.f, 1.f, 0.f) * val;
+          rs->convertColourValue(cv, &bv.color);
+          vertex_buffer.push_back(bv);
+
+          // First part of quad.
+          if (y != VSize - 1) {
+            index_buffer.push_back((x - 1) + (y * USize));
+            index_buffer.push_back(vertex_buffer.size() - 1);
+            index_buffer.push_back((x - 1) + ((y + 1) * USize));
+          }
+          // Second part of quad.
+          if (y != 0) {
+            index_buffer.push_back((x - 1) + (y * USize));
+            index_buffer.push_back(vertex_buffer.size() - 2);
+            index_buffer.push_back(vertex_buffer.size() - 1);
+          }
+        }
+      }
+    }
+
+    if (terrain_south_east) {
+      pname.str(std::string());
+      pname << ti->map_x + 1 << "_" << ti->map_y + 1;
+      std::shared_ptr<l2p::UTexture> tm = std::dynamic_pointer_cast<l2p::UTexture>(terrain_south_east->GetObject(l2p::Package::GetName(pname.str())));
+      if (tm) {
+        const int x = USize;
+        const int y = VSize;
+        Ogre::Vector3 v( (x * scale.x) + translation.x
+                       , (y * scale.y) + translation.y
+                       , (tm->G16_data[0] * (scale.z / 256.f)) + translation.z
+                       );
+        box.merge(v);
+        BufferVert bv = {v, Ogre::Vector3(0.f, 0.f, 0.f), 0};
+        float val = -((v.z - min_hight)/(min_hight - max_hight));
+        Ogre::ColourValue cv;
+        if (v.z < sealevel)
+          cv = Ogre::ColourValue(0.f, 0.f, 1.f) * val;
+        else
+          cv = Ogre::ColourValue(0.f, 1.f, 0.f) * val;
+        rs->convertColourValue(cv, &bv.color);
+        vertex_buffer.push_back(bv);
+
+        // First part of quad.
+        if (y != VSize - 1) {
+          index_buffer.push_back((x - 1) + ((y - 1) * USize));
+          index_buffer.push_back(vertex_buffer.size() - 2);
+          index_buffer.push_back(vertex_buffer.size() - 1);
+        }
+        // Second part of quad.
+        if (y != 0) {
+          index_buffer.push_back((x - 1) + ((y - 1) * USize));
+          index_buffer.push_back(vertex_buffer.size() - 1);
+          index_buffer.push_back(vertex_buffer.size() - (USize + 2));
+        }
       }
     }
   }
