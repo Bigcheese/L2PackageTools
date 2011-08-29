@@ -642,9 +642,19 @@ public:
   float draw_scale;
   Vector draw_scale_3d;
   ObjectRef<UStaticMesh> static_mesh;
+  unsigned bDeleteMe : 1;
+  unsigned bHidden : 1;
+  unsigned bCollideActors : 1;
+  unsigned bBlockActors : 1;
+  unsigned bBlockPlayers : 1;
 
   AActor()
-    : draw_scale(1.f) {
+    : draw_scale(1.f)
+    , bDeleteMe(false)
+    , bHidden(false)
+    , bCollideActors(true)
+    , bBlockActors(true)
+    , bBlockPlayers(true) {
     draw_scale_3d.X = 1.f;
     draw_scale_3d.Y = 1.f;
     draw_scale_3d.Z = 1.f;
@@ -672,6 +682,21 @@ public:
     } else if (p.name == "StaticMesh") {
       static_mesh.index = p.index_value;
       static_mesh.package = package;
+      return true;
+    } else if (p.name == "bDeleteMe") {
+      bDeleteMe = p.is_array;
+      return true;
+    } else if (p.name == "bHidden") {
+      bHidden = p.is_array;
+      return true;
+    } else if (p.name == "bCollideActors") {
+      bCollideActors = p.is_array;
+      return true;
+    } else if (p.name == "bBlockActors") {
+      bBlockActors = p.is_array;
+      return true;
+    } else if (p.name == "bBlockPlayers") {
+      bBlockPlayers = p.is_array;
       return true;
     }
     return false;
