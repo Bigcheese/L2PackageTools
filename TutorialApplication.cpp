@@ -566,7 +566,7 @@ void TutorialApplication::loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshAc
   ent_name += ".";
   ent_name += sma->name;
   Ogre::Entity *ent = mSceneMgr->createEntity(ent_name, smesh_name, "General");
-  ent->setRenderingDistance(ent->getBoundingRadius() * 50.f);
+  ent->setRenderingDistance(ent->getBoundingRadius() * 75.f);
   Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
   node->attachObject(ent);
   node->setPosition(sma->location.X, sma->location.Y, sma->location.Z);
