@@ -33,10 +33,13 @@ protected:
   void loadBSP(std::shared_ptr<l2p::UModel> m);
   void loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti);
   void loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshActor> sma);
+  void loadPathnode(l2p::StringRef path);
+  Ogre::AxisAlignedBox getRegionAABB(int x, int y);
   virtual void createScene(void);
   virtual bool mousePressed(const OIS::MouseEvent &arg, OIS::MouseButtonID id);
 
   Ogre::SceneNode *mUnrealCordNode;
+  std::vector<std::pair<int, int>> mLoadedRegions;
 };
 
 #endif // #ifndef __TutorialApplication_h_

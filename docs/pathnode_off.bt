@@ -1,0 +1,18 @@
+//--------------------------------------
+//--- 010 Editor v3.2 Binary Template
+//
+// Author: Michael Spencer
+// Purpose: Reading the Lineage II official server pathnode.bin file.
+//--------------------------------------
+
+typedef struct {
+    int x;
+    int y;
+    int z;
+    int link[8];
+} Node;
+
+Node invalid_node;
+Node nodes[(FileSize() / 44) - 1];
+
+// Yes, that's really all there is to it.

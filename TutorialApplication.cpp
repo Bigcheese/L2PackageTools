@@ -15,6 +15,7 @@ This source file is part of the
 -----------------------------------------------------------------------------
 */
 #include "TutorialApplication.h"
+#include "DynamicLines.h"
 #undef GetObject
 #include "l2p/UObject.h"
 
@@ -74,6 +75,7 @@ void TutorialApplication::loadMap(l2p::StringRef name) {
   {
     name.substr(0, 2).getAsInteger(10, m->regionX);
     name.substr(3, 2).getAsInteger(10, m->regionY);
+    mLoadedRegions.push_back(std::make_pair(m->regionX, m->regionY));
   }
 
   if (m->points.size() != 0)
@@ -574,6 +576,92 @@ void TutorialApplication::loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshAc
   node->yaw(Ogre::Radian(0.000096f) * sma->rotation.pitch);
   node->pitch(Ogre::Radian(-0.000096f) * sma->rotation.roll);
   node->setScale(ogre_cast(sma->draw_scale_3d) * sma->draw_scale);
+}
+
+struct Node {
+  l2p::aligned_little32_t x;
+  l2p::aligned_little32_t y;
+  l2p::aligned_little32_t z;
+  l2p::aligned_ulittle32_t links[8];
+};
+
+void TutorialApplication::loadPathnode(l2p::StringRef path) {
+  HANDLE hfile = ::CreateFileA( path.str().c_str()
+                              , GENERIC_READ
+                              , FILE_SHARE_READ
+                              , 0
+                              , OPEN_EXISTING
+                              , FILE_FLAG_RANDOM_ACCESS
+                              , 0
+                              );
+  if (hfile == INVALID_HANDLE_VALUE) {
+    std::cerr << "CreateFile failed on " << path.str() << "\n";
+    return;
+  }
+  HANDLE hmap = ::CreateFileMappingA( hfile
+                                    , 0
+                                    , PAGE_READONLY
+                                    , 0
+                                    , 0
+                                    , 0
+                                    );
+  if (hmap == 0) {
+    std::cerr << "CreateFileMapping failed on " << path.str() << "\n";
+    ::CloseHandle(hfile);
+    return;
+  }
+  char *data = (char*)::MapViewOfFile( hmap
+                                     , FILE_MAP_READ
+                                     , 0
+                                     , 0
+                                     , 0
+                                     );
+  if (data == nullptr) {
+    std::cerr << "MapViewOfFile failed on " << path.str() << "\n";
+    ::CloseHandle(hmap);
+    ::CloseHandle(hfile);
+    return;
+  }
+
+  // Get size of file.
+  DWORD size = ::GetFileSize(hfile, 0);
+  uint32_t node_count = size / sizeof(Node);
+  Node *nodes = reinterpret_cast<Node*>(data);
+  DynamicLines *lines = new DynamicLines(Ogre::RenderOperation::OT_LINE_LIST);
+  for (Node *n = nodes + 1; n < nodes + node_count; ++n) {
+    Ogre::Vector3 a(n->x, n->y, n->z);
+    bool contains = false;
+    for (auto i = mLoadedRegions.begin(), e = mLoadedRegions.end(); i != e; ++i) {
+      if (getRegionAABB(i->first, i->second).contains(a)) {
+        contains = true;
+        break;
+      }
+    }
+    if (!contains)
+      continue;
+    for (int i = 0; i < 8; ++i) {
+      if (n->links[i] != 0) {
+        Ogre::Vector3 b(nodes[n->links[i]].x, nodes[n->links[i]].y, nodes[n->links[i]].z);
+        lines->addPoint(a);
+        lines->addPoint(b);
+      }
+    }
+  }
+  lines->update();
+  mUnrealCordNode->createChildSceneNode()->attachObject(lines);
+
+  ::UnmapViewOfFile(data);
+  ::CloseHandle(hmap);
+  ::CloseHandle(hfile);
+}
+
+Ogre::AxisAlignedBox TutorialApplication::getRegionAABB(int x, int y) {
+    int32_t minX = (x - 20) * 32768;
+    int32_t minY = (y - 18) * 32768;
+    return Ogre::AxisAlignedBox(
+        Ogre::Vector3(static_cast<float>(minX), static_cast<float>(minY), -16383.f)
+      , Ogre::Vector3(static_cast<float>(minX + 32768), static_cast<float>(minY + 32768), 16383.f)
+      );
 }
 
 //-------------------------------------------------------------------------------------

@@ -90,11 +90,13 @@ endif()
 set(HDRS
   ./BaseApplication.h
   ./TutorialApplication.h
+  ./DynamicLines.h
 )
 
 set(SRCS
   ./BaseApplication.cpp
   ./TutorialApplication.cpp
+  ./DynamicLines.cpp
 )
 
 # add_definitions(-D_HAS_ITERATOR_DEBUGGING=0)
