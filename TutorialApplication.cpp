@@ -19,8 +19,12 @@ This source file is part of the
 #undef GetObject
 #include "l2p/UObject.h"
 
+#include "boost/program_options.hpp"
+
 #include <sstream>
 #include <vector>
+
+namespace po = boost::program_options;
 
 Ogre::Vector3 ogre_cast(const l2p::Vector &v) {
   return Ogre::Vector3(v.X, v.Y, v.Z);
@@ -678,14 +682,38 @@ void TutorialApplication::createScene(void)
   l->setDiffuseColour(0.5f, 0.5f, 0.5f);
   l->setSpecularColour(0.f, 0.f, 0.f);
 
-  if (__argc < 2)
-    return;
+  po::options_description desc("L2MapViewer");
+  desc.add_options()
+    ("help", "this help message")
+    ("root", po::value<std::string>(), "L2 root directory")
+    ("pathnode", po::value<std::string>(), "Path to the pathnode file")
+    ("input", po::value<std::vector<std::string>>(), "input")
+    ;
 
-  l2p::Package::Initialize(__argv[1]);
+  po::positional_options_description p;
+  p.add("input", -1);
+
+  po::variables_map vm;
+  po::store(po::command_line_parser(__argc, __argv).
+            options(desc).positional(p).run(), vm);
+  po::notify(vm);
+
+  if (!vm.count("root")) {
+    std::cerr << "Failed to find L2 root directory.\n";
+  }
+
+  l2p::Package::Initialize(vm["root"].as<std::string>());
 
   // Load maps.
-  for (int i = 2; i < __argc; ++i) {
-    loadMap(__argv[i]);
+  if (vm.count("input")) {
+    const std::vector<std::string> &input = vm["input"].as<std::vector<std::string>>();
+    for (auto i = input.begin(), e = input.end(); i != e; ++i) {
+      loadMap(*i);
+    }
+  }
+
+  if (vm.count("pathnode")) {
+    loadPathnode(vm["pathnode"].as<std::string>());
   }
 }
 

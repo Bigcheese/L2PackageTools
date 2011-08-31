@@ -72,7 +72,7 @@ if (NOT OGRE_BUILD_PLATFORM_IPHONE)
   endif ()
   set(Boost_ADDITIONAL_VERSIONS "1.44" "1.44.0" "1.42" "1.42.0" "1.41.0" "1.41" "1.40.0" "1.40" "1.39.0" "1.39" "1.38.0" "1.38" "1.37.0" "1.37" )
   # Components that need linking (NB does not include header-only components like bind)
-  set(OGRE_BOOST_COMPONENTS thread date_time)
+  set(OGRE_BOOST_COMPONENTS thread date_time program_options)
   find_package(Boost COMPONENTS ${OGRE_BOOST_COMPONENTS} QUIET)
   if (NOT Boost_FOUND)
     # Try again with the other type of libs
