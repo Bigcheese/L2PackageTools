@@ -678,7 +678,7 @@ void TutorialApplication::createScene(void)
   Ogre::Light *l = mSceneMgr->createLight("MainLight");
   l->setType(Ogre::Light::LT_DIRECTIONAL);
   l->setPosition(0, 0, 0);
-  l->setDirection(Ogre::Vector3(-0.5, -0.75, -0.5).normalisedCopy());
+  l->setDirection(Ogre::Vector3(-0.45, -0.75, -0.55).normalisedCopy());
   l->setDiffuseColour(0.5f, 0.5f, 0.5f);
   l->setSpecularColour(0.f, 0.f, 0.f);
 
