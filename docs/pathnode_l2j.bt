@@ -1,0 +1,22 @@
+//--------------------------------------
+//--- 010 Editor v3.2 Binary Template
+//
+// Author: Michael Spencer
+// Purpose: Reading the L2J server xx_yy.pn files.
+//--------------------------------------
+
+BigEndian();
+
+typedef struct {
+  short z;
+  char neighbor_layer[8];
+} Node;
+
+typedef struct {
+  byte count;
+  Node nodes[count];
+} Layers;
+
+while (!FEof()) {
+  Layers layer;
+}

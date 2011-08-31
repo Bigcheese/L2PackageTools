@@ -19,12 +19,14 @@ This source file is part of the
 #undef GetObject
 #include "l2p/UObject.h"
 
+#include "boost/filesystem.hpp"
 #include "boost/program_options.hpp"
 
 #include <sstream>
 #include <vector>
 
 namespace po = boost::program_options;
+namespace fs = boost::filesystem;
 
 Ogre::Vector3 ogre_cast(const l2p::Vector &v) {
   return Ogre::Vector3(v.X, v.Y, v.Z);
@@ -589,7 +591,7 @@ struct Node {
   l2p::aligned_ulittle32_t links[8];
 };
 
-void TutorialApplication::loadPathnode(l2p::StringRef path) {
+void TutorialApplication::loadPathnodeOff(l2p::StringRef path) {
   HANDLE hfile = ::CreateFileA( path.str().c_str()
                               , GENERIC_READ
                               , FILE_SHARE_READ
@@ -659,6 +661,190 @@ void TutorialApplication::loadPathnode(l2p::StringRef path) {
   ::CloseHandle(hfile);
 }
 
+struct NodeL2J {
+  l2p::big16_t z;
+  l2p::aligned_little8_t links[8];
+};
+
+void TutorialApplication::loadPathnodeL2J(int regionX, int regionY) {
+  fs::path path(mPathnodeL2JDir);
+  std::stringstream ss;
+  ss << regionX << "_" << regionY << ".pn";
+  path /= ss.str();
+  Ogre::Vector3 start = getRegionAABB(regionX, regionY).getMinimum();
+
+  HANDLE hfile = ::CreateFileA( path.string().c_str()
+                              , GENERIC_READ
+                              , FILE_SHARE_READ
+                              , 0
+                              , OPEN_EXISTING
+                              , FILE_FLAG_RANDOM_ACCESS
+                              , 0
+                              );
+  if (hfile == INVALID_HANDLE_VALUE) {
+    std::cerr << "CreateFile failed on " << path.string() << "\n";
+    return;
+  }
+  HANDLE hmap = ::CreateFileMappingA( hfile
+                                    , 0
+                                    , PAGE_READONLY
+                                    , 0
+                                    , 0
+                                    , 0
+                                    );
+  if (hmap == 0) {
+    std::cerr << "CreateFileMapping failed on " << path.string() << "\n";
+    ::CloseHandle(hfile);
+    return;
+  }
+  char *data = (char*)::MapViewOfFile( hmap
+                                     , FILE_MAP_READ
+                                     , 0
+                                     , 0
+                                     , 0
+                                     );
+  if (data == nullptr) {
+    std::cerr << "MapViewOfFile failed on " << path.string() << "\n";
+    ::CloseHandle(hmap);
+    ::CloseHandle(hfile);
+    return;
+  }
+
+  // Build index;
+  std::map<std::pair<int, int>, std::pair<int, NodeL2J*>> pathnode_data;
+  for (int y = 0; y < 256; ++y) {
+    for (int x = 0; x < 256; ++x) {
+      int layers = *data++;
+      pathnode_data[std::make_pair(x, y)] = std::make_pair(layers, reinterpret_cast<NodeL2J*>(data));
+      data += layers * sizeof(NodeL2J);
+    }
+  }
+
+  // Build line list.
+  DynamicLines *lines = new DynamicLines(Ogre::RenderOperation::OT_LINE_LIST);
+  for (int y = 0; y < 256; ++y) {
+    for (int x = 0; x < 256; ++x) {
+      // Get each node in this block.
+      const auto &layers = pathnode_data[std::make_pair(x, y)];
+      for (int i = 0; i < layers.first; ++i) {
+        Ogre::Vector3 v(start.x + (x * 128) + 48, start.y + (y * 128) + 48, layers.second[i].z);
+        // Get neighbors.
+        int link_index, nx, ny;
+        // North
+        link_index = layers.second[i].links[0];
+        if (link_index > 0) {
+          --link_index;
+          nx = x;
+          ny = y - 1;
+          auto ittr = pathnode_data.find(std::make_pair(nx, ny));
+          if (ittr != pathnode_data.end()) {
+            Ogre::Vector3 v2(start.x + (nx * 128) + 48, start.y + (ny * 128) + 48, ittr->second.second[link_index].z);
+            lines->addPoint(v);
+            lines->addPoint(v2);
+          }
+        }
+        // North East
+        link_index = layers.second[i].links[1];
+        if (link_index > 0) {
+          --link_index;
+          nx = x + 1;
+          ny = y - 1;
+          auto ittr = pathnode_data.find(std::make_pair(nx, ny));
+          if (ittr != pathnode_data.end()) {
+            Ogre::Vector3 v2(start.x + (nx * 128) + 48, start.y + (ny * 128) + 48, ittr->second.second[link_index].z);
+            lines->addPoint(v);
+            lines->addPoint(v2);
+          }
+        }
+        // East
+        link_index = layers.second[i].links[2];
+        if (link_index > 0) {
+          --link_index;
+          nx = x + 1;
+          ny = y;
+          auto ittr = pathnode_data.find(std::make_pair(nx, ny));
+          if (ittr != pathnode_data.end()) {
+            Ogre::Vector3 v2(start.x + (nx * 128) + 48, start.y + (ny * 128) + 48, ittr->second.second[link_index].z);
+            lines->addPoint(v);
+            lines->addPoint(v2);
+          }
+        }
+        // South East
+        link_index = layers.second[i].links[3];
+        if (link_index > 0) {
+          --link_index;
+          nx = x + 1;
+          ny = y + 1;
+          auto ittr = pathnode_data.find(std::make_pair(nx, ny));
+          if (ittr != pathnode_data.end()) {
+            Ogre::Vector3 v2(start.x + (nx * 128) + 48, start.y + (ny * 128) + 48, ittr->second.second[link_index].z);
+            lines->addPoint(v);
+            lines->addPoint(v2);
+          }
+        }
+        // South
+        link_index = layers.second[i].links[4];
+        if (link_index > 0) {
+          --link_index;
+          nx = x;
+          ny = y + 1;
+          auto ittr = pathnode_data.find(std::make_pair(nx, ny));
+          if (ittr != pathnode_data.end()) {
+            Ogre::Vector3 v2(start.x + (nx * 128) + 48, start.y + (ny * 128) + 48, ittr->second.second[link_index].z);
+            lines->addPoint(v);
+            lines->addPoint(v2);
+          }
+        }
+        // South West
+        link_index = layers.second[i].links[5];
+        if (link_index > 0) {
+          --link_index;
+          nx = x - 1;
+          ny = y + 1;
+          auto ittr = pathnode_data.find(std::make_pair(nx, ny));
+          if (ittr != pathnode_data.end()) {
+            Ogre::Vector3 v2(start.x + (nx * 128) + 48, start.y + (ny * 128) + 48, ittr->second.second[link_index].z);
+            lines->addPoint(v);
+            lines->addPoint(v2);
+          }
+        }
+        // West
+        link_index = layers.second[i].links[6];
+        if (link_index > 0) {
+          --link_index;
+          nx = x - 1;
+          ny = y;
+          auto ittr = pathnode_data.find(std::make_pair(nx, ny));
+          if (ittr != pathnode_data.end()) {
+            Ogre::Vector3 v2(start.x + (nx * 128) + 48, start.y + (ny * 128) + 48, ittr->second.second[link_index].z);
+            lines->addPoint(v);
+            lines->addPoint(v2);
+          }
+        }
+        // North West
+        link_index = layers.second[i].links[7];
+        if (link_index > 0) {
+          --link_index;
+          nx = x - 1;
+          ny = y - 1;
+          auto ittr = pathnode_data.find(std::make_pair(nx, ny));
+          if (ittr != pathnode_data.end()) {
+            Ogre::Vector3 v2(start.x + (nx * 128) + 48, start.y + (ny * 128) + 48, ittr->second.second[link_index].z);
+            lines->addPoint(v);
+            lines->addPoint(v2);
+          }
+        }
+      }
+    }
+  }
+  lines->update();
+  mUnrealCordNode->createChildSceneNode()->attachObject(lines);
+
+  ::UnmapViewOfFile(data);
+  ::CloseHandle(hmap);
+  ::CloseHandle(hfile);
+}
+
 Ogre::AxisAlignedBox TutorialApplication::getRegionAABB(int x, int y) {
     int32_t minX = (x - 20) * 32768;
     int32_t minY = (y - 18) * 32768;
@@ -686,7 +872,8 @@ void TutorialApplication::createScene(void)
   desc.add_options()
     ("help", "this help message")
     ("root", po::value<std::string>(), "L2 root directory")
-    ("pathnode", po::value<std::string>(), "Path to the pathnode file")
+    ("pathnode-off", po::value<std::string>(), "Path to the official pathnode file")
+    ("pathnode-l2j", po::value<std::string>(), "Directory containing l2j pathnode files")
     ("input", po::value<std::vector<std::string>>(), "input")
     ;
 
@@ -712,8 +899,15 @@ void TutorialApplication::createScene(void)
     }
   }
 
-  if (vm.count("pathnode")) {
-    loadPathnode(vm["pathnode"].as<std::string>());
+  if (vm.count("pathnode-off")) {
+    loadPathnodeOff(vm["pathnode"].as<std::string>());
+  }
+
+  if (vm.count("pathnode-l2j")) {
+    mPathnodeL2JDir = vm["pathnode-l2j"].as<std::string>();
+    for (auto i = mLoadedRegions.begin(), e = mLoadedRegions.end(); i != e; ++i) {
+      loadPathnodeL2J(i->first, i->second);
+    }
   }
 }
 
