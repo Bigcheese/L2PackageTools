@@ -40,7 +40,7 @@ float4 main_fp() : COLOR {
   oColor.r = 1.0;
   oColor.g = 0.8;
   oColor.b = 0.0;
-  oColor.a = 0.0;
+  oColor.a = 0.5;
 
   return oColor;
 }

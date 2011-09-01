@@ -26,6 +26,10 @@ material GeoCell/Cell
   {
     pass
     {
+      cull_hardware none
+      scene_blend alpha_blend
+      depth_write off
+
       vertex_program_ref GeoCell/GeoCellVS
       {
       }
