@@ -109,6 +109,10 @@ void TutorialApplication::loadMap(l2p::StringRef name) {
   }
 }
 
+Ogre::Real operator |(const Ogre::Vector3 &a, const Ogre::Vector3 &b) {
+  return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
+}
+
 void TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m) {
   l2p::Name name = m->package->name;
   std::vector<float> vertex_data;
@@ -123,7 +127,16 @@ void TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m) {
     if (ignoreNode(m.get(), n, s))
       continue;
 
-    uint32_t vert_start = vertex_data.size() / 6;
+    uint32_t vert_start = vertex_data.size() / 8;
+
+    const Ogre::Vector3 uvec = ogre_cast(m->vectors[s.U]);
+    const Ogre::Vector3 vvec = ogre_cast(m->vectors[s.V]);
+    const Ogre::Vector3 base = ogre_cast(m->points[s.base]);
+    int usize = s.material->USize;
+    int vsize = s.material->VSize;
+
+    if (usize == 0 || vsize == 0)
+      usize = vsize = 64;
 
     // Vertex buffer.
     if (n.num_verticies > 0) {
@@ -131,6 +144,8 @@ void TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m) {
 
       for (uint32_t vert_index = 0; vert_index < n.num_verticies; ++vert_index) {
         const l2p::Vector &pos = m->points[m->vertexes[n.vert_pool + vert_index].vertex];
+        const Ogre::Vector3 dist(ogre_cast(pos) - base);
+        const Ogre::Vector2 tcoord((dist | uvec) / float(usize), (dist | vvec) / float(vsize));
         bounds += pos;
         vertex_data.push_back(pos.X);
         vertex_data.push_back(pos.Y);
@@ -138,17 +153,23 @@ void TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m) {
         vertex_data.push_back(Normal.X);
         vertex_data.push_back(Normal.Y);
         vertex_data.push_back(Normal.Z);
+        vertex_data.push_back(tcoord.x);
+        vertex_data.push_back(tcoord.y);
       }
 
       if (s.flags & l2p::PF_TwoSided) {
         for (uint32_t vert_index = 0; vert_index < n.num_verticies; ++vert_index) {
           const l2p::Vector &pos = m->points[m->vertexes[n.vert_pool + vert_index].vertex];
+          const Ogre::Vector3 dist(ogre_cast(pos) - base);
+          const Ogre::Vector2 tcoord((dist | uvec) / float(usize), (dist | vvec) / float(vsize));
           vertex_data.push_back(pos.X);
           vertex_data.push_back(pos.Y);
           vertex_data.push_back(pos.Z);
           vertex_data.push_back(Normal.X);
           vertex_data.push_back(Normal.Y);
           vertex_data.push_back(-Normal.Z);
+          vertex_data.push_back(tcoord.x);
+          vertex_data.push_back(tcoord.y);
         }
       }
     }
@@ -174,7 +195,7 @@ void TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m) {
   Ogre::MeshPtr mesh = Ogre::MeshManager::getSingleton().createManual(Ogre::String(name) + Ogre::String(m->name), "General");
   Ogre::VertexData  *data = new Ogre::VertexData();
   mesh->sharedVertexData = data;
-  data->vertexCount = vertex_data.size() / 6;
+  data->vertexCount = vertex_data.size() / 8;
 
   Ogre::VertexDeclaration *decl = data->vertexDeclaration;
   uint32_t offset = 0;
@@ -182,6 +203,8 @@ void TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m) {
   offset += Ogre::VertexElement::getTypeSize(Ogre::VET_FLOAT3);
   decl->addElement(0, offset, Ogre::VET_FLOAT3, Ogre::VES_NORMAL);
   offset += Ogre::VertexElement::getTypeSize(Ogre::VET_FLOAT3);
+  decl->addElement(0, offset, Ogre::VET_FLOAT2, Ogre::VES_TEXTURE_COORDINATES);
+  offset += Ogre::VertexElement::getTypeSize(Ogre::VET_FLOAT2);
 
   Ogre::HardwareVertexBufferSharedPtr vbuf =
     Ogre::HardwareBufferManager::getSingleton().createVertexBuffer(
@@ -212,6 +235,7 @@ void TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m) {
 
   Ogre::Entity *ent = mSceneMgr->createEntity(Ogre::String(name) + Ogre::String(m->name) + "E", Ogre::String(name) + Ogre::String(m->name));
   ent->setUserAny(Ogre::Any(static_cast<l2p::UObject*>(m.get())));
+  ent->setMaterialName("StaticMesh/Default");
   Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
   node->attachObject(ent);
 }
@@ -495,6 +519,7 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
 struct SMV {
   Ogre::Vector3 position;
   Ogre::Vector3 normal;
+  Ogre::Vector2 tex;
 };
 
 void TutorialApplication::loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshActor> sma) {
@@ -511,8 +536,9 @@ void TutorialApplication::loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshAc
     if (!sm)
       return;
     // Build vertex buffer.
-    for (auto i = sm->vertices.begin(), e = sm->vertices.end(); i != e; ++i) {
-      SMV v = {ogre_cast(i->location), ogre_cast(i->normal)};
+    auto tc = sm->texture_coords[0].elements.begin();
+    for (auto i = sm->vertices.begin(), e = sm->vertices.end(); i != e; ++i, ++tc) {
+      SMV v = {ogre_cast(i->location), ogre_cast(i->normal), Ogre::Vector2(tc->u, tc->v)};
       vertex_buffer.push_back(v);
     }
 
@@ -540,6 +566,8 @@ void TutorialApplication::loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshAc
     offset += Ogre::VertexElement::getTypeSize(Ogre::VET_FLOAT3);
     decl->addElement(0, offset, Ogre::VET_FLOAT3, Ogre::VES_NORMAL);
     offset += Ogre::VertexElement::getTypeSize(Ogre::VET_FLOAT3);
+    decl->addElement(0, offset, Ogre::VET_FLOAT2, Ogre::VES_TEXTURE_COORDINATES);
+    offset += Ogre::VertexElement::getTypeSize(Ogre::VET_FLOAT2);
 
     Ogre::HardwareVertexBufferSharedPtr vbuf =
       Ogre::HardwareBufferManager::getSingleton().createVertexBuffer(
@@ -574,6 +602,7 @@ void TutorialApplication::loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshAc
   ent_name += ".";
   ent_name += sma->name;
   Ogre::Entity *ent = mSceneMgr->createEntity(ent_name, smesh_name, "General");
+  ent->setMaterialName("StaticMesh/Checker");
   ent->setRenderingDistance(ent->getBoundingRadius() * 75.f);
   Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
   node->attachObject(ent);
@@ -845,6 +874,99 @@ void TutorialApplication::loadPathnodeL2J(int regionX, int regionY) {
   ::CloseHandle(hfile);
 }
 
+void TutorialApplication::loadGeodataL2J(int regionX, int regionY) {
+  fs::path path(mGeodataL2JDir);
+  std::stringstream ss;
+  ss << regionX << "_" << regionY << ".l2j";
+  path /= ss.str();
+  Ogre::Vector3 start = getRegionAABB(regionX, regionY).getMinimum();
+
+  HANDLE hfile = ::CreateFileA( path.string().c_str()
+                              , GENERIC_READ
+                              , FILE_SHARE_READ
+                              , 0
+                              , OPEN_EXISTING
+                              , FILE_FLAG_RANDOM_ACCESS
+                              , 0
+                              );
+  if (hfile == INVALID_HANDLE_VALUE) {
+    std::cerr << "CreateFile failed on " << path.string() << "\n";
+    return;
+  }
+  HANDLE hmap = ::CreateFileMappingA( hfile
+                                    , 0
+                                    , PAGE_READONLY
+                                    , 0
+                                    , 0
+                                    , 0
+                                    );
+  if (hmap == 0) {
+    std::cerr << "CreateFileMapping failed on " << path.string() << "\n";
+    ::CloseHandle(hfile);
+    return;
+  }
+  char *data = (char*)::MapViewOfFile( hmap
+                                     , FILE_MAP_READ
+                                     , 0
+                                     , 0
+                                     , 0
+                                     );
+  if (data == nullptr) {
+    std::cerr << "MapViewOfFile failed on " << path.string() << "\n";
+    ::CloseHandle(hmap);
+    ::CloseHandle(hfile);
+    return;
+  }
+
+  // Build point list.
+  GeoCells *cell_list = new GeoCells;
+  for (int x = 0; x < 256; ++x) {
+    for (int y = 0; y < 256; ++y) {
+      uint8_t type = *data++;
+      Ogre::Vector2 block_min(start.x + (x * 128), start.y + (y * 128));
+      if (type == 0) { // Simple
+        float height = *reinterpret_cast<l2p::little16_t*>(data);
+        Ogre::Vector3 v(block_min.x + 64, block_min.y + 64, height);
+        cell_list->addCell(v, 0);
+        data += 2;
+      } else if (type == 1) { // Complex
+        l2p::little16_t *cells = reinterpret_cast<l2p::little16_t*>(data);
+        for (int cx = 0; cx < 8; ++cx) {
+          for (int cy = 0; cy < 8; ++cy) {
+            short height = *cells++;
+            height = (short)(height & 0xfff0);
+            height = (short)(height >> 1);
+            Ogre::Vector3 v(block_min.x + (cx * 16) + 8, block_min.y + (cy * 16) + 8, height);
+            cell_list->addCell(v, 1);
+          }
+        }
+        data += 2 * 64;
+      } else { // Multilayer
+        for (int cx = 0; cx < 8; ++cx) {
+          for (int cy = 0; cy < 8; ++cy) {
+            uint8_t layers = *data++;
+            for (int i = 0; i < layers; ++i) {
+              short height = *reinterpret_cast<l2p::little16_t*>(data);
+              height = (short)(height & 0xfff0);
+              height = (short)(height >> 1);
+              Ogre::Vector3 v(block_min.x + (cx * 16) + 8, block_min.y + (cy * 16) + 8, height);
+              cell_list->addCell(v, 1);
+              data += 2;
+            }
+          }
+        }
+      }
+    }
+  }
+  cell_list->update();
+  cell_list->setMaterial("GeoCell/Cell");
+  mUnrealCordNode->createChildSceneNode()->attachObject(cell_list);
+
+  ::UnmapViewOfFile(data);
+  ::CloseHandle(hmap);
+  ::CloseHandle(hfile);
+}
+
 Ogre::AxisAlignedBox TutorialApplication::getRegionAABB(int x, int y) {
     int32_t minX = (x - 20) * 32768;
     int32_t minY = (y - 18) * 32768;
@@ -874,6 +996,7 @@ void TutorialApplication::createScene(void)
     ("root", po::value<std::string>(), "L2 root directory")
     ("pathnode-off", po::value<std::string>(), "Path to the official pathnode file")
     ("pathnode-l2j", po::value<std::string>(), "Directory containing l2j pathnode files")
+    ("geodata-l2j", po::value<std::string>(), "Directory containing l2j geodata files")
     ("input", po::value<std::vector<std::string>>(), "input")
     ;
 
@@ -907,6 +1030,19 @@ void TutorialApplication::createScene(void)
     mPathnodeL2JDir = vm["pathnode-l2j"].as<std::string>();
     for (auto i = mLoadedRegions.begin(), e = mLoadedRegions.end(); i != e; ++i) {
       loadPathnodeL2J(i->first, i->second);
+    }
+  }
+
+  if (vm.count("geodata-l2j")) {
+    const Ogre::RenderSystemCapabilities* caps = Ogre::Root::getSingleton().getRenderSystem()->getCapabilities();
+    if (!caps->hasCapability(Ogre::RSC_GEOMETRY_PROGRAM)) {
+      OGRE_EXCEPT(Ogre::Exception::ERR_NOT_IMPLEMENTED, "Your render system / hardware does not support geometry programs, "
+        "so cannot run this demo. Sorry!",
+                "TutorialApplication::createScene");
+    }
+    mGeodataL2JDir = vm["geodata-l2j"].as<std::string>();
+    for (auto i = mLoadedRegions.begin(), e = mLoadedRegions.end(); i != e; ++i) {
+      loadGeodataL2J(i->first, i->second);
     }
   }
 }

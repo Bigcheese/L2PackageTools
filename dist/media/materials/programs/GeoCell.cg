@@ -1,0 +1,46 @@
+struct VS_INPUT {
+  float4 position : POSITION;
+};
+
+struct VS_OUTPUT {
+  float4 position : POSITION;
+};
+
+VS_OUTPUT main_vs(in VS_INPUT vin) {
+  VS_OUTPUT vout;
+  vout.position = vin.position;
+  return vout;
+}
+
+POINT
+TRIANGLE_OUT
+void main_gp( AttribArray<VS_OUTPUT> vin
+            , uniform float3 eyePosition
+            , uniform float4x4 world
+            , uniform float4x4 viewProj
+            ) {
+  float3 center = mul(vin[0].position.xyz, (float3x3)world);
+  if (distance(center, mul((float3x3)world, eyePosition)) < 500000000.0) {
+    float3 g_positions[4] = { float3( -1, 1, 0 ), float3( -1, -1, 0 ), float3( 1, 1, 0 ), float3( 1, -1, 0 ) };
+    float radius = vin[0].position.w < 0.5 ? 60.0 : 6.0;
+    for (int i = 0; i < 4; ++i) {
+      float3 position = g_positions[i] * radius;
+      position += vin[0].position.xyz;
+      float4 outpos = mul(world, float4(position, 1.0));
+      outpos = mul(viewProj, outpos);
+      emitVertex(outpos : POSITION);
+    }
+  }
+  restartStrip();
+}
+
+float4 main_fp() : COLOR {
+  float4 oColor;
+
+  oColor.r = 1.0;
+  oColor.g = 0.8;
+  oColor.b = 0.0;
+  oColor.a = 0.0;
+
+  return oColor;
+}

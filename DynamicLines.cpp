@@ -252,21 +252,63 @@ void DynamicLines::fillHardwareBuffers()
   mDirty = false;
 }
 
-/*
-void DynamicLines::getWorldTransforms(Matrix4 *xform) const
-{
-   // return identity matrix to prevent parent transforms
-   *xform = Matrix4::IDENTITY;
-}
-*/
-/*
-const Quaternion &DynamicLines::getWorldOrientation(void) const
-{
-   return Quaternion::IDENTITY;
+GeoCells::GeoCells() {
+  initialize(RenderOperation::OT_POINT_LIST, false);
+  setMaterial("BaseWhiteNoLighting");
+  mDirty = true;
 }
 
-const Vector3 &DynamicLines::getWorldPosition(void) const
-{
-   return Vector3::ZERO;
+GeoCells::~GeoCells() {
 }
-*/
+
+void GeoCells::addCell(const Vector3 &pos, int type) {
+  GeoCell c = {Vector4(pos.x, pos.y, pos.z, float(type))};
+  mCells.push_back(c);
+  mDirty = true;
+}
+
+void GeoCells::clear() {
+  mDirty = true;
+}
+
+void GeoCells::update() {
+  if (mDirty) fillHardwareBuffers();
+}
+
+void GeoCells::createVertexDeclaration() {
+  VertexDeclaration *decl = mRenderOp.vertexData->vertexDeclaration;
+  uint32_t offset = 0;
+  decl->addElement(POSITION_BINDING, 0, VET_FLOAT4, VES_POSITION);
+  offset += VertexElement::getTypeSize(VET_FLOAT4);
+}
+
+void GeoCells::fillHardwareBuffers() {
+  int size = mCells.size();
+
+  prepareHardwareBuffers(size, 0);
+
+  if (!size) {
+    mBox.setExtents(Vector3::ZERO, Vector3::ZERO);
+    mDirty=false;
+    return;
+  }
+
+  AxisAlignedBox extents;
+
+  HardwareVertexBufferSharedPtr vbuf =
+    mRenderOp.vertexData->vertexBufferBinding->getBuffer(0);
+
+  GeoCell *prPos = static_cast<GeoCell*>(vbuf->lock(HardwareBuffer::HBL_DISCARD));
+  {
+   for(int i = 0; i < size; i++)
+   {
+      *prPos++ = mCells[i];
+      extents.merge(Vector3(mCells[i].position.x, mCells[i].position.y, mCells[i].position.z));
+   }
+  }
+  vbuf->unlock();
+
+  mBox.setExtents(extents.getMinimum(), extents.getMaximum());
+
+  mDirty = false;
+}

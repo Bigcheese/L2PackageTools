@@ -119,8 +119,41 @@ protected:
   /// Implementation DynamicRenderable, pushes point list out to hardware memory
   virtual void fillHardwareBuffers();
 
-private:
   std::vector<Vector3> mPoints;
+  bool mDirty;
+};
+
+class GeoCells : public DynamicRenderable {
+  typedef Ogre::Vector3 Vector3;
+  typedef Ogre::Quaternion Quaternion;
+  typedef Ogre::Camera Camera;
+  typedef Ogre::Real Real;
+  typedef Ogre::RenderOperation::OperationType OperationType;
+
+public:
+  /// Constructor - see setOperationType() for description of argument.
+  GeoCells();
+  virtual ~GeoCells();
+
+  void addCell(const Vector3 &pos, int type);
+
+  /// Remove all points from the point list
+  void clear();
+
+  /// Call this to update the hardware buffer after making changes.
+  void update();
+
+protected:
+  /// Implementation DynamicRenderable, creates a simple vertex-only decl
+  virtual void createVertexDeclaration();
+  /// Implementation DynamicRenderable, pushes point list out to hardware memory
+  virtual void fillHardwareBuffers();
+
+  struct GeoCell {
+    Ogre::Vector4 position;
+  };
+
+  std::vector<GeoCell> mCells;
   bool mDirty;
 };
 

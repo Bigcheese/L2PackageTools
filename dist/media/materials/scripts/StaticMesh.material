@@ -1,0 +1,28 @@
+material StaticMesh/Default
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture rockwall.tga
+      }
+    }
+  }
+}
+
+material StaticMesh/Checker
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture checker.png
+      }
+    }
+  }
+}
+

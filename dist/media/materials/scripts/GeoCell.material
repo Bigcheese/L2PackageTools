@@ -1,0 +1,46 @@
+vertex_program GeoCell/GeoCellVS cg
+{
+  source GeoCell.cg
+  entry_point main_vs
+  profiles vs_1_1 arbvp1
+}
+
+fragment_program GeoCell/GeoCellFP cg
+{
+  source GeoCell.cg
+  entry_point main_fp
+  profiles ps_1_1 arbfp1
+}
+
+geometry_program GeoCell/GeoCellGP cg
+{
+  source GeoCell.cg
+  entry_point main_gp
+  profiles gp4gp gpu_gp
+}
+
+
+material GeoCell/Cell
+{
+  technique
+  {
+    pass
+    {
+      vertex_program_ref GeoCell/GeoCellVS
+      {
+      }
+      fragment_program_ref GeoCell/GeoCellFP
+      {
+      }
+      geometry_program_ref GeoCell/GeoCellGP
+      {
+        param_named_auto eyePosition camera_position_object_space
+        param_named_auto world world_matrix
+        param_named_auto viewProj viewproj_matrix
+      }
+      texture_unit
+      {
+      }
+    }
+  }
+}

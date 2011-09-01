@@ -4,12 +4,12 @@ Filename:    BaseApplication.h
 -----------------------------------------------------------------------------
 
 This source file is part of the
-   ___                 __    __ _ _    _ 
+   ___                 __    __ _ _    _
   /___\__ _ _ __ ___  / / /\ \ (_) | _(_)
  //  // _` | '__/ _ \ \ \/  \/ / | |/ / |
 / \_// (_| | | |  __/  \  /\  /| |   <| |
 \___/ \__, |_|  \___|   \/  \/ |_|_|\_\_|
-      |___/                              
+      |___/
       Tutorial Framework
       http://www.ogre3d.org/tikiwiki/
 -----------------------------------------------------------------------------
@@ -19,6 +19,7 @@ This source file is part of the
 
 #include <OgreCamera.h>
 #include <OgreEntity.h>
+#include <OgreException.h>
 #include <OgreLogManager.h>
 #include <OgreRoot.h>
 #include <OgreViewport.h>

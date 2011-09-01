@@ -1,0 +1,41 @@
+//--------------------------------------
+//--- 010 Editor v3.2 Binary Template
+//
+// Author: Michael Spencer
+// Purpose: Reading the L2J geodata files.
+//--------------------------------------
+
+typedef struct {
+  short data;
+} Cell <read=CellRead>;
+
+string CellRead(Cell &c) {
+  // 010 Editor doesn't do this correctly :(.
+  local short height = c.data;
+  height = (short)(height & 0xfff0);
+  height = (short)(height >> 1);
+  string s;
+  SPrintf(s, "%d", height);
+  return s;
+}
+
+typedef struct(byte layers) {
+  Cell cells[layers];
+} MultilayerCell;
+
+typedef struct {
+  byte type;
+  if (type == 0) // Simple
+    short z;
+  else if (type == 1) // Complex
+    Cell cells[64];
+  else { // Multi layer
+    local int block;
+    for (block = 0; block < 64; ++block) {
+        byte layers;
+        MultilayerCell cells(layers);
+    }
+  }
+} Block;
+
+Block blocks[65536] <optimize=false>;

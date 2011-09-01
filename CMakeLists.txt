@@ -159,7 +159,9 @@ if(WIN32)
   install(FILES ${OGRE_PLUGIN_DIR_REL}/OgreMain.dll
     ${OGRE_PLUGIN_DIR_REL}/RenderSystem_Direct3D9.dll
     ${OGRE_PLUGIN_DIR_REL}/RenderSystem_GL.dll
+    ${OGRE_PLUGIN_DIR_REL}/Plugin_CgProgramManager.dll
     ${OGRE_PLUGIN_DIR_REL}/OIS.dll
+    ${OGRE_PLUGIN_DIR_REL}/cg.dll
     DESTINATION bin
     CONFIGURATIONS Release RelWithDebInfo
   )
@@ -167,7 +169,9 @@ if(WIN32)
   install(FILES ${OGRE_PLUGIN_DIR_DBG}/OgreMain_d.dll
     ${OGRE_PLUGIN_DIR_DBG}/RenderSystem_Direct3D9_d.dll
     ${OGRE_PLUGIN_DIR_DBG}/RenderSystem_GL_d.dll
+    ${OGRE_PLUGIN_DIR_REL}/Plugin_CgProgramManager_d.dll
     ${OGRE_PLUGIN_DIR_DBG}/OIS_d.dll
+    ${OGRE_PLUGIN_DIR_DBG}/cg_d.dll
     DESTINATION bin
     CONFIGURATIONS Debug
   )
