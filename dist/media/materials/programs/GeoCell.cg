@@ -1,46 +1,131 @@
+//===- GeoCell.cg - Lineage II Geodata display shader ------------*- Cg -*-===//
+//
+// L2PackageTools
+//
+// This file is distributed under the Simplified BSD License. See LICENSE.TXT
+// for details.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file contains the the vertex, geometry, and fragment programs to
+// efficently display geodata in a 3d world.
+//
+// The input to the pass is a single vertex containing the following:
+// int x : 11;
+// int y : 11;
+//  Both x and y are offsets to the top left (-x, -y) corner of the cell (which
+//  could be a large simple block, or a complex small cell). They are 11 bits
+//  each because a block contains 8x8 cells, and a region contains 256x256
+//  blocks. Thus there are a max of 2048 (2^11) cells per side.
+// int height : 13;
+// int north : 1;
+// int south : 1;
+// int east : 1;
+// int west : 1;
+//  These 4 bits represent if a player within the cell can move out of the cell
+//  in each given direction. They are all 1 if the cell is a large simple block.
+//  This information is later used to pick texture coordinates to use so that
+//  the correct markings are displayed.
+// int type : 2;
+//  This holds the type of the cell which is either:
+//    0 = large simple
+//    1 = small complex
+//    2 = small multilayer
+//  This is used both to determine how large the cell is, and what color it
+//  should be displayed as.
+// int data : ?;
+//  Extra information such as is this cell currently selected.
+// This totals to at least 42 bits.
+//
+// This input is packed into
+// struct {
+//   short3 position : POSITION;
+// };
+//
+// The geometry program unpacks this data.
+//
+//===----------------------------------------------------------------------===//
+
 struct VS_INPUT {
-  float4 position : POSITION;
+  short4 position : POSITION;
 };
 
-struct VS_OUTPUT {
-  float4 position : POSITION;
-};
-
-VS_OUTPUT main_vs(in VS_INPUT vin) {
-  VS_OUTPUT vout;
+VS_INPUT main_vs(in VS_INPUT vin) {
+  VS_INPUT vout;
   vout.position = vin.position;
   return vout;
 }
 
 POINT
 TRIANGLE_OUT
-void main_gp( AttribArray<VS_OUTPUT> vin
-            , uniform float3 eyePosition
+void main_gp( AttribArray<VS_INPUT> vin
+            , uniform float3 basePos
+//            , uniform float3 eyePosition
             , uniform float4x4 world
             , uniform float4x4 viewProj
             ) {
-  float3 center = mul(vin[0].position.xyz, (float3x3)world);
-  if (distance(center, mul((float3x3)world, eyePosition)) < 500000000.0) {
-    float3 g_positions[4] = { float3( -1, 1, 0 ), float3( -1, -1, 0 ), float3( 1, 1, 0 ), float3( 1, -1, 0 ) };
-    float radius = vin[0].position.w < 0.5 ? 60.0 : 6.0;
-    for (int i = 0; i < 4; ++i) {
-      float3 position = g_positions[i] * radius;
-      position += vin[0].position.xyz;
-      float4 outpos = mul(world, float4(position, 1.0));
-      outpos = mul(viewProj, outpos);
-      emitVertex(outpos : POSITION);
-    }
+  float3 g_positions[4] = { float3( -1, 1, 0 ), float3( -1, -1, 0 ), float3( 1, 1, 0 ), float3( 1, -1, 0 ) };
+  float2 g_texcoords[4] = { float2(0, 0.25), float2(0, 0), float2(0.25, 0.25), float2(0.25, 0) };
+  // Decompress position.
+  short nswe = vin[0].position.w >> 7;
+  short type = vin[0].position.w & 0x03;
+  float3 center = float3(float2(vin[0].position.xy * 16), vin[0].position.z);
+  // Pick offset based on type.
+  center.xy += basePos.xy;
+  center.xy += type == 0 ?  float2(64.0, 64.0) : float2(8.0, 8.0);
+  // Pick radius based on type.
+  float radius = type == 0 ? 62.0 : 7.0;
+  // Pick color based on type.
+  float4 color;
+  if (type == 0)
+    color = float4(0.0, 0.0, 1.0, 1.0);
+  else if (type == 1)
+    color = float4(0.0, 1.0, 0.0, 1.0);
+  else
+    color = float4(1.0, 0.0, 0.0, 1.0);
+  // Generate texture coords based on NSWE.
+  if (nswe & 0x8) {
+    g_texcoords[0].x += 0.5;
+    g_texcoords[1].x += 0.5;
+    g_texcoords[2].x += 0.5;
+    g_texcoords[3].x += 0.5;
+  }
+  if (nswe & 0x4) {
+    g_texcoords[0].x += 0.25;
+    g_texcoords[1].x += 0.25;
+    g_texcoords[2].x += 0.25;
+    g_texcoords[3].x += 0.25;
+  }
+  if (nswe & 0x2) {
+    g_texcoords[0].y += 0.5;
+    g_texcoords[1].y += 0.5;
+    g_texcoords[2].y += 0.5;
+    g_texcoords[3].y += 0.5;
+  }
+  if (nswe & 0x1) {
+    g_texcoords[0].y += 0.25;
+    g_texcoords[1].y += 0.25;
+    g_texcoords[2].y += 0.25;
+    g_texcoords[3].y += 0.25;
+  }
+  // Generate verticies.
+  for (int i = 0; i < 4; ++i) {
+    float3 position = center + (g_positions[i] * radius);
+    float4 vout = mul(world, float4(position, 1.0));
+    vout = mul(viewProj, vout);
+    emitVertex(vout : POSITION, color : COLOR, g_texcoords[i] : TEXCOORD0);
   }
   restartStrip();
 }
 
-float4 main_fp() : COLOR {
+float4 main_fp( float4 color : COLOR
+              , float2 texCoord : TEXCOORD0
+              , uniform sampler nsewTex
+              ) : COLOR {
   float4 oColor;
 
-  oColor.r = 1.0;
-  oColor.g = 0.8;
-  oColor.b = 0.0;
-  oColor.a = 0.5;
+  oColor.rgb = tex2D(nsewTex, texCoord);// * color.rgb;
+  oColor.a = 0.6;
 
   return oColor;
 }

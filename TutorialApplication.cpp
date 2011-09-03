@@ -132,8 +132,13 @@ void TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m) {
     const Ogre::Vector3 uvec = ogre_cast(m->vectors[s.U]);
     const Ogre::Vector3 vvec = ogre_cast(m->vectors[s.V]);
     const Ogre::Vector3 base = ogre_cast(m->points[s.base]);
-    int usize = s.material->USize;
-    int vsize = s.material->VSize;
+    int usize = 0;
+    int vsize = 0;
+    std::shared_ptr<l2p::UTexture> mat = s.material;
+    if (mat) {
+      usize = mat->USize;
+      vsize = mat->VSize;
+    }
 
     if (usize == 0 || vsize == 0)
       usize = vsize = 64;
@@ -919,25 +924,24 @@ void TutorialApplication::loadGeodataL2J(int regionX, int regionY) {
   }
 
   // Build point list.
-  GeoCells *cell_list = new GeoCells;
+  GeoCells *cell_list = new GeoCells(start.x, start.y);
+  cell_list->setBoundingBox(getRegionAABB(regionX, regionY));
   for (int x = 0; x < 256; ++x) {
     for (int y = 0; y < 256; ++y) {
       uint8_t type = *data++;
-      Ogre::Vector2 block_min(start.x + (x * 128), start.y + (y * 128));
       if (type == 0) { // Simple
-        float height = *reinterpret_cast<l2p::little16_t*>(data);
-        Ogre::Vector3 v(block_min.x + 64, block_min.y + 64, height);
-        cell_list->addCell(v, 0);
+        int16_t height = *reinterpret_cast<l2p::little16_t*>(data);
+        cell_list->addCell(x * 8, y * 8, height, 0x0F, 0);
         data += 2;
       } else if (type == 1) { // Complex
         l2p::little16_t *cells = reinterpret_cast<l2p::little16_t*>(data);
         for (int cx = 0; cx < 8; ++cx) {
           for (int cy = 0; cy < 8; ++cy) {
             short height = *cells++;
+            uint8_t nswe = height & 0x000f;
             height = (short)(height & 0xfff0);
             height = (short)(height >> 1);
-            Ogre::Vector3 v(block_min.x + (cx * 16) + 8, block_min.y + (cy * 16) + 8, height);
-            cell_list->addCell(v, 1);
+            cell_list->addCell((x * 8) + cx, (y * 8) + cy, height, nswe, 1);
           }
         }
         data += 2 * 64;
@@ -947,10 +951,10 @@ void TutorialApplication::loadGeodataL2J(int regionX, int regionY) {
             uint8_t layers = *data++;
             for (int i = 0; i < layers; ++i) {
               short height = *reinterpret_cast<l2p::little16_t*>(data);
+              uint8_t nswe = height & 0x000f;
               height = (short)(height & 0xfff0);
               height = (short)(height >> 1);
-              Ogre::Vector3 v(block_min.x + (cx * 16) + 8, block_min.y + (cy * 16) + 8, height);
-              cell_list->addCell(v, 1);
+              cell_list->addCell((x * 8) + cx, (y * 8) + cy, height, nswe, 2);
               data += 2;
             }
           }
@@ -959,7 +963,6 @@ void TutorialApplication::loadGeodataL2J(int regionX, int regionY) {
     }
   }
   cell_list->update();
-  cell_list->setMaterial("GeoCell/Cell");
   mUnrealCordNode->createChildSceneNode()->attachObject(cell_list);
 
   ::UnmapViewOfFile(data);

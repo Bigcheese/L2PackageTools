@@ -131,17 +131,18 @@ class GeoCells : public DynamicRenderable {
   typedef Ogre::RenderOperation::OperationType OperationType;
 
 public:
-  /// Constructor - see setOperationType() for description of argument.
-  GeoCells();
+  GeoCells(float x, float y);
   virtual ~GeoCells();
 
-  void addCell(const Vector3 &pos, int type);
+  void addCell(uint16_t x, uint16_t y, short height, uint8_t nswe, uint8_t type);
 
   /// Remove all points from the point list
   void clear();
 
   /// Call this to update the hardware buffer after making changes.
   void update();
+
+  virtual bool preRender(Ogre::SceneManager* sm, Ogre::RenderSystem* rsys);
 
 protected:
   /// Implementation DynamicRenderable, creates a simple vertex-only decl
@@ -150,9 +151,11 @@ protected:
   virtual void fillHardwareBuffers();
 
   struct GeoCell {
-    Ogre::Vector4 position;
+    int16_t position[4];
   };
 
+  float baseX;
+  float baseY;
   std::vector<GeoCell> mCells;
   bool mDirty;
 };

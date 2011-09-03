@@ -169,9 +169,9 @@ if(WIN32)
   install(FILES ${OGRE_PLUGIN_DIR_DBG}/OgreMain_d.dll
     ${OGRE_PLUGIN_DIR_DBG}/RenderSystem_Direct3D9_d.dll
     ${OGRE_PLUGIN_DIR_DBG}/RenderSystem_GL_d.dll
-    ${OGRE_PLUGIN_DIR_REL}/Plugin_CgProgramManager_d.dll
+    ${OGRE_PLUGIN_DIR_DBG}/Plugin_CgProgramManager_d.dll
     ${OGRE_PLUGIN_DIR_DBG}/OIS_d.dll
-    ${OGRE_PLUGIN_DIR_DBG}/cg_d.dll
+    ${OGRE_PLUGIN_DIR_DBG}/cg.dll
     DESTINATION bin
     CONFIGURATIONS Debug
   )

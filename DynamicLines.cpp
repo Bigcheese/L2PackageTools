@@ -252,17 +252,20 @@ void DynamicLines::fillHardwareBuffers()
   mDirty = false;
 }
 
-GeoCells::GeoCells() {
+GeoCells::GeoCells(float x, float y)
+  : baseX(x)
+  , baseY(y) {
   initialize(RenderOperation::OT_POINT_LIST, false);
-  setMaterial("BaseWhiteNoLighting");
+  setMaterial("GeoCell/Cell");
   mDirty = true;
 }
 
 GeoCells::~GeoCells() {
 }
 
-void GeoCells::addCell(const Vector3 &pos, int type) {
-  GeoCell c = {Vector4(pos.x, pos.y, pos.z, float(type))};
+void GeoCells::addCell(uint16_t x, uint16_t y, short height, uint8_t nswe, uint8_t type) {
+  int16_t data = (nswe << 7) | type;
+  GeoCell c = {x, y, height, data};
   mCells.push_back(c);
   mDirty = true;
 }
@@ -275,11 +278,20 @@ void GeoCells::update() {
   if (mDirty) fillHardwareBuffers();
 }
 
+bool GeoCells::preRender(SceneManager* sm, RenderSystem* rsys) {
+  DynamicRenderable::preRender(sm, rsys);
+
+  Ogre::GpuProgramParametersSharedPtr geom_params = getMaterial()->getTechnique(0)->getPass(0)->getGeometryProgramParameters();
+  geom_params->setNamedConstant("basePos", Vector3(baseX, baseY, 0));
+
+  return true;
+}
+
 void GeoCells::createVertexDeclaration() {
   VertexDeclaration *decl = mRenderOp.vertexData->vertexDeclaration;
   uint32_t offset = 0;
-  decl->addElement(POSITION_BINDING, 0, VET_FLOAT4, VES_POSITION);
-  offset += VertexElement::getTypeSize(VET_FLOAT4);
+  decl->addElement(POSITION_BINDING, 0, VET_SHORT4, VES_POSITION);
+  offset += VertexElement::getTypeSize(VET_SHORT4);
 }
 
 void GeoCells::fillHardwareBuffers() {
@@ -293,8 +305,6 @@ void GeoCells::fillHardwareBuffers() {
     return;
   }
 
-  AxisAlignedBox extents;
-
   HardwareVertexBufferSharedPtr vbuf =
     mRenderOp.vertexData->vertexBufferBinding->getBuffer(0);
 
@@ -303,12 +313,8 @@ void GeoCells::fillHardwareBuffers() {
    for(int i = 0; i < size; i++)
    {
       *prPos++ = mCells[i];
-      extents.merge(Vector3(mCells[i].position.x, mCells[i].position.y, mCells[i].position.z));
    }
   }
   vbuf->unlock();
-
-  mBox.setExtents(extents.getMinimum(), extents.getMaximum());
-
   mDirty = false;
 }
