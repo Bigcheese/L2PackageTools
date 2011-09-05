@@ -142,8 +142,6 @@ public:
   /// Call this to update the hardware buffer after making changes.
   void update();
 
-  virtual bool preRender(Ogre::SceneManager* sm, Ogre::RenderSystem* rsys);
-
 protected:
   /// Implementation DynamicRenderable, creates a simple vertex-only decl
   virtual void createVertexDeclaration();

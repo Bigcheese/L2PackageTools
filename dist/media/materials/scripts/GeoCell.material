@@ -38,8 +38,10 @@ material GeoCell/Cell
       }
       geometry_program_ref GeoCell/GeoCellGP
       {
+        param_named_auto eyePosition camera_position_object_space
         param_named_auto world world_matrix
         param_named_auto viewProj viewproj_matrix
+        param_named_auto basePos custom 42
       }
       texture_unit
       {

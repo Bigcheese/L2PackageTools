@@ -257,6 +257,7 @@ GeoCells::GeoCells(float x, float y)
   , baseY(y) {
   initialize(RenderOperation::OT_POINT_LIST, false);
   setMaterial("GeoCell/Cell");
+  setCustomParameter(42, Ogre::Vector4(baseX, baseY, 0.f, 0.f));
   mDirty = true;
 }
 
@@ -276,15 +277,6 @@ void GeoCells::clear() {
 
 void GeoCells::update() {
   if (mDirty) fillHardwareBuffers();
-}
-
-bool GeoCells::preRender(SceneManager* sm, RenderSystem* rsys) {
-  DynamicRenderable::preRender(sm, rsys);
-
-  Ogre::GpuProgramParametersSharedPtr geom_params = getMaterial()->getTechnique(0)->getPass(0)->getGeometryProgramParameters();
-  geom_params->setNamedConstant("basePos", Vector3(baseX, baseY, 0));
-
-  return true;
 }
 
 void GeoCells::createVertexDeclaration() {
