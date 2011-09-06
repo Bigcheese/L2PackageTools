@@ -341,7 +341,7 @@ std::shared_ptr<UObject> Package::GetObject(int index) {
 
 std::shared_ptr<UObject> Package::GetObject(Name name) {
   for (auto i = export_table.begin(), e = export_table.end(); i != e; ++i) {
-    if (i->name == name)
+    if (i->name == name && GetObjectName(i->class_) != "Package")
       return DeserializeExport(*i);
   }
   return nullptr;
