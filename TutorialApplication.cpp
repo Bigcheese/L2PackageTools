@@ -1027,7 +1027,7 @@ void TutorialApplication::createScene(void)
   }
 
   if (vm.count("pathnode-off")) {
-    loadPathnodeOff(vm["pathnode"].as<std::string>());
+    loadPathnodeOff(vm["pathnode-off"].as<std::string>());
   }
 
   if (vm.count("pathnode-l2j")) {
