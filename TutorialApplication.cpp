@@ -1041,7 +1041,7 @@ void TutorialApplication::createScene(void)
     const Ogre::RenderSystemCapabilities* caps = Ogre::Root::getSingleton().getRenderSystem()->getCapabilities();
     if (!caps->hasCapability(Ogre::RSC_GEOMETRY_PROGRAM)) {
       OGRE_EXCEPT(Ogre::Exception::ERR_NOT_IMPLEMENTED, "Your render system / hardware does not support geometry programs, "
-        "so cannot run this demo. Sorry!",
+        "so cannot load geodata. Sorry!",
                 "TutorialApplication::createScene");
     }
     mGeodataL2JDir = vm["geodata-l2j"].as<std::string>();
