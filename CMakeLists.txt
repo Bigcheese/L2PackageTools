@@ -175,20 +175,6 @@ if(WIN32)
     DESTINATION bin
     CONFIGURATIONS Debug
   )
-
-   # as of sdk 1.7.2 we need to copy the boost dll's as well
-   # because they're not linked statically (it worked with 1.7.1 though)
-   install(FILES ${Boost_DATE_TIME_LIBRARY_RELEASE}
-      ${Boost_THREAD_LIBRARY_RELEASE}
-      DESTINATION bin
-      CONFIGURATIONS Release RelWithDebInfo
-   )
-
-   install(FILES ${Boost_DATE_TIME_LIBRARY_DEBUG}
-      ${Boost_THREAD_LIBRARY_DEBUG}
-      DESTINATION bin
-      CONFIGURATIONS Debug
-   )
 endif(WIN32)
 
 if(UNIX)
