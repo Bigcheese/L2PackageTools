@@ -362,7 +362,8 @@ std::shared_ptr<UObject> Package::DeserializeExport(Export &e) {
     ret.reset(new UTexture);
   } else if (class_name == "StaticMesh") {
     ret.reset(new UStaticMesh);
-  } else if (class_name == "StaticMeshActor") {
+  } else if (  class_name == "StaticMeshActor"
+            || class_name == "MovableStaticMeshActor") {
     ret.reset(new AStaticMeshActor);
   } else {
     // Unknown, but it must be a child of UObject, so use that.

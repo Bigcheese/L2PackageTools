@@ -96,6 +96,7 @@ void TutorialApplication::loadMap(l2p::StringRef name) {
 
   std::vector<std::shared_ptr<l2p::AStaticMeshActor>> smeshes;
   package->GetObjects("StaticMeshActor", smeshes);
+  package->GetObjects("MovableStaticMeshActor", smeshes);
 
   for (auto i = smeshes.begin(), e = smeshes.end(); i != e; ++i) {
     if (  (*i)->bHidden
