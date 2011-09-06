@@ -356,7 +356,7 @@ bool BaseApplication::keyPressed( const OIS::KeyEvent &arg )
     }
     else if (arg.key == OIS::KC_SYSRQ)   // take a screenshot
     {
-        mWindow->writeContentsToTimestampedFile("screenshot", ".jpg");
+        mWindow->writeContentsToTimestampedFile("screenshot", ".png");
     }
     else if (arg.key == OIS::KC_ESCAPE)
     {
