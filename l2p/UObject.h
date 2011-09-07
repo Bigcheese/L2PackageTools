@@ -167,6 +167,29 @@ struct ObjectRef {
   }
 };
 
+enum ESheerAxis {
+  SHEER_None = 0,
+  SHEER_XY   = 1,
+  SHEER_XZ   = 2,
+  SHEER_YX   = 3,
+  SHEER_YZ   = 4,
+  SHEER_ZX   = 5,
+  SHEER_ZY   = 6,
+};
+
+struct Scale {
+  Vector scale;
+  float sheer_rate;
+  ESheerAxis sheer_axis;
+
+  friend Package &operator >>(Package &p, Scale &s) {
+    p >> s.scale
+      >> s.sheer_rate
+      >> Extract<ulittle8_t>(s.sheer_rate);
+    return p;
+  }
+};
+
 struct Property {
   Name name;
   union {
@@ -188,6 +211,7 @@ struct Property {
     Index index_value;
     Vector vector_value;
     Rotator rotator_value;
+    Scale scale_value;
   };
   std::vector<uint8_t> data_value;
 

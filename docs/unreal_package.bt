@@ -228,6 +228,12 @@ typedef struct {
 } Rotator;
 
 typedef struct {
+    Vector scale;
+    float sheer_rate;
+    byte sheer_axis;
+} Scale;
+
+typedef struct {
     FName name;
     if (FNameRead(name) == "None")
         break;
@@ -251,6 +257,7 @@ typedef struct {
     if (is_array) {
         ArrayIndex array_index;
     }
+    local int size_left = _size;
     switch (type) {
     case 0x01: byte value; break;
     case 0x02: int32 value; break;
@@ -261,13 +268,19 @@ typedef struct {
     case 0x07: char value[_size]; break; // String
     case 0x08: char value[_size]; break; // Class
     case 0x09: char value[_size]; break; // Array
-    case 0x0A: 
-        if (FNameRead(struct_name) == "Vector")
+    case 0x0A:
+        if (FNameRead(struct_name) == "Vector") {
             Vector value;
-        else if (FNameRead(struct_name) == "Rotator")
+            size_left -= sizeof(Vector);
+        } else if (FNameRead(struct_name) == "Rotator") {
             Rotator value;
-        else
-            char value[_size];
+            size_left -= sizeof(Rotator);
+        } else if (FNameRead(struct_name) == "Scale") {
+            Scale value;
+            size_left -= sizeof(Scale);
+        }
+        if (size_left > 0)
+            char unkvalue[size_left];
         break; // Struct
     case 0x0B: char value[_size]; break; // Vector
     case 0x0C: Rotator value; break; // Rotator
