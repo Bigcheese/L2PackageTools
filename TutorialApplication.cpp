@@ -46,15 +46,14 @@ TutorialApplication::~TutorialApplication(void)
 }
 
 bool ignoreNode(l2p::UModel *m, l2p::BSPNode &n, l2p::BSPSurface &s) {
-  l2p::Package &p = *m->package;
+  if (s.flags & l2p::PF_WeDontCareAbout || !s.material.index)
+    return true;
   for (int i = 0; i < n.num_verticies; ++i) {
     Ogre::Vector3 loc = ogre_cast(m->points[m->vertexes[n.vert_pool + i].vertex]);
     Ogre::AxisAlignedBox box = ogre_cast(m->getRegionAABB());
     if (!box.contains(loc))
       return true;
   }
-  if (s.flags & l2p::PF_WeDontCareAbout || !s.material.index)
-    return true;
   return false;
 }
 
