@@ -30,7 +30,7 @@ public:
 
 protected:
   void loadMap(l2p::StringRef path);
-  void loadBSP(std::shared_ptr<l2p::UModel> m);
+  Ogre::SceneNode *loadBSP(std::shared_ptr<l2p::UModel> m, bool ignoreNonVisible = true);
   void loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti);
   void loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshActor> sma);
   void loadPathnodeOff(l2p::StringRef path);

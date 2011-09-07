@@ -24,10 +24,10 @@ int main(int argc, char *argv[]) {
   }
 
   l2p::Package *p = l2p::Package::GetPackage("22_22");
-  std::vector<std::shared_ptr<l2p::AStaticMeshActor>> smeshes;
-  p->GetObjects("StaticMeshActor", smeshes);
+  std::vector<std::shared_ptr<l2p::ABlockingVolume>> blocking_volumes;
+  p->GetObjects("BlockingVolume", blocking_volumes);
 
-  std::shared_ptr<l2p::UStaticMesh> sm = smeshes.front()->static_mesh;
+  std::shared_ptr<l2p::UModel> sm = blocking_volumes.front()->brush;
 
   return 0;
 }

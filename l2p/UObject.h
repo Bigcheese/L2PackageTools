@@ -665,6 +665,7 @@ public:
   Rotator rotation;
   float draw_scale;
   Vector draw_scale_3d;
+  Vector pre_pivot;
   ObjectRef<UStaticMesh> static_mesh;
   unsigned bDeleteMe : 1;
   unsigned bHidden : 1;
@@ -685,6 +686,9 @@ public:
     rotation.pitch = 0.f;
     rotation.yaw = 0.f;
     rotation.roll = 0.f;
+    pre_pivot.X = 0.f;
+    pre_pivot.Y = 0.f;
+    pre_pivot.Z = 0.f;
   }
 
   virtual bool SetProperty(const Property &p) {
@@ -721,6 +725,9 @@ public:
       return true;
     } else if (p.name == "bBlockPlayers") {
       bBlockPlayers = p.is_array;
+      return true;
+    } else if (p.name == "PrePivot") {
+      pre_pivot = p.vector_value;
       return true;
     }
     return false;
@@ -768,6 +775,39 @@ public:
     return false;
   }
 };
+
+enum ECSGOperation {
+  CSG_Active      = 0,
+  CSG_Add         = 1,
+  CSG_Subtract    = 2,
+  CSG_Intersect   = 3,
+  CSG_Deintersect = 4,
+  CSG_MAX         = 5,
+};
+
+class ABrush : public AActor {
+public:
+  ECSGOperation csg_operation;
+  Color color;
+  int32_t poly_flags;
+  bool bColored;
+  ObjectRef<UModel> brush;
+
+  virtual bool SetProperty(const Property &p) {
+    if (AActor::SetProperty(p))
+      return true;
+
+    if (p.name == "Brush") {
+      brush.index = p.index_value;
+      brush.package = package;
+    }
+
+    return false;
+  }
+};
+
+class AVolume : public ABrush {};
+class ABlockingVolume : public AVolume {};
 
 }
 

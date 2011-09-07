@@ -58,6 +58,14 @@ bool ignoreNode(l2p::UModel *m, l2p::BSPNode &n, l2p::BSPSurface &s) {
   return false;
 }
 
+void assignActorPropsToNode(std::shared_ptr<l2p::AActor> a, Ogre::SceneNode *n) {
+  n->setPosition(ogre_cast(a->location) - ogre_cast(a->pre_pivot));
+  n->roll(Ogre::Radian(-0.000096f) * a->rotation.yaw);
+  n->yaw(Ogre::Radian(0.000096f) * a->rotation.pitch);
+  n->pitch(Ogre::Radian(-0.000096f) * a->rotation.roll);
+  n->setScale(ogre_cast(a->draw_scale_3d) * a->draw_scale);
+}
+
 void TutorialApplication::loadMap(l2p::StringRef name) {
   l2p::Package *package = l2p::Package::GetPackage(name);
   if (!package)
@@ -87,6 +95,21 @@ void TutorialApplication::loadMap(l2p::StringRef name) {
   if (m->points.size() != 0)
     loadBSP(m);
 
+  std::vector<std::shared_ptr<l2p::ABlockingVolume>> blocking_volumes;
+  package->GetObjects("BlockingVolume", blocking_volumes);
+  for (auto i = blocking_volumes.begin(), e = blocking_volumes.end(); i != e; ++i) {
+    std::shared_ptr<l2p::UModel> m = (*i)->brush;
+    if (m) {
+      Ogre::SceneNode *n = loadBSP(m, false);
+      if (n) {
+        assignActorPropsToNode(*i, n);
+        n->showBoundingBox(true);
+        dynamic_cast<Ogre::Entity*>(
+          n->getAttachedObject(0))->setMaterialName("Volume/Display");
+      }
+    }
+  }
+
   std::vector<std::shared_ptr<l2p::ATerrainInfo>> terrains;
   package->GetObjects("TerrainInfo", terrains);
 
@@ -114,7 +137,7 @@ Ogre::Real operator |(const Ogre::Vector3 &a, const Ogre::Vector3 &b) {
   return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
 }
 
-void TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m) {
+Ogre::SceneNode *TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m, bool ignoreNonVisible) {
   l2p::Name name = m->package->name;
   std::vector<float> vertex_data;
   std::vector<uint32_t> index_buf;
@@ -125,7 +148,7 @@ void TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m) {
     l2p::BSPNode &n = *ni;
     l2p::BSPSurface &s = m->surfaces[n.surface];
 
-    if (ignoreNode(m.get(), n, s))
+    if (ignoreNonVisible && ignoreNode(m.get(), n, s))
       continue;
 
     uint32_t vert_start = vertex_data.size() / 8;
@@ -196,7 +219,7 @@ void TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m) {
   }
 
   if (vertex_data.size() == 0 || index_buf.size() == 0)
-    return;
+    return nullptr;
 
   Ogre::MeshPtr mesh = Ogre::MeshManager::getSingleton().createManual(Ogre::String(name) + Ogre::String(m->name), "General");
   Ogre::VertexData  *data = new Ogre::VertexData();
@@ -244,6 +267,8 @@ void TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m) {
   ent->setMaterialName("StaticMesh/Default");
   Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
   node->attachObject(ent);
+
+  return node;
 }
 
 struct BufferVert {
@@ -612,11 +637,7 @@ void TutorialApplication::loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshAc
   ent->setRenderingDistance(ent->getBoundingRadius() * 75.f);
   Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
   node->attachObject(ent);
-  node->setPosition(sma->location.X, sma->location.Y, sma->location.Z);
-  node->roll(Ogre::Radian(-0.000096f) * sma->rotation.yaw);
-  node->yaw(Ogre::Radian(0.000096f) * sma->rotation.pitch);
-  node->pitch(Ogre::Radian(-0.000096f) * sma->rotation.roll);
-  node->setScale(ogre_cast(sma->draw_scale_3d) * sma->draw_scale);
+  assignActorPropsToNode(sma, node);
 }
 
 struct Node {

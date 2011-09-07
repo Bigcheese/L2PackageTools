@@ -1,0 +1,22 @@
+fragment_program Volume/VolumeFP cg
+{
+  source Volume.cg
+  entry_point main_fp
+  profiles ps_1_1 arbfp1
+}
+
+material Volume/Display
+{
+  technique
+  {
+    pass
+    {
+      scene_blend alpha_blend
+      depth_write off
+
+      fragment_program_ref Volume/VolumeFP
+      {
+      }
+    }
+  }
+}

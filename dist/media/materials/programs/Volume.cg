@@ -1,0 +1,19 @@
+//===- Volume.cg - Unreal Volume display shader ------------------*- Cg -*-===//
+//
+// L2PackageTools
+//
+// This file is distributed under the Simplified BSD License. See LICENSE.TXT
+// for details.
+//
+//===----------------------------------------------------------------------===//
+
+float4 main_fp( float4 color : COLOR) : COLOR {
+  float4 oColor;
+
+  oColor.r = 1.0;
+  oColor.g = 0.0;
+  oColor.b = 0.0;
+  oColor.a = 0.5;
+
+  return oColor;
+}
