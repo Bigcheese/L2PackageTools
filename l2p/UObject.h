@@ -203,6 +203,7 @@ struct Property {
   Name struct_name;
   uint32_t size;
   ArrayIndex array_index;
+  int32_t array_size;
 
   union {
     uint8_t uint8_t_value;
@@ -253,9 +254,13 @@ struct Property {
     case 0x06:
       pa >> p.index_value;
       break;
-    case 0x09:
-      p.data_value.resize(p.size);
-      static_cast<std::istream&>(pa).read((char*)&p.data_value.front(), p.size);
+    case 0x09: {
+        std::streampos a = static_cast<std::istream&>(pa).tellg();
+        pa >> Extract<Index>(p.array_size);
+        std::streamoff asize = static_cast<std::istream&>(pa).tellg() - a;
+        p.data_value.resize(std::size_t(p.size - asize));
+        static_cast<std::istream&>(pa).read((char*)&p.data_value.front(), p.size - asize);
+      }
       break;
     case 0x0A:
       if (p.struct_name == "Vector")
@@ -759,10 +764,10 @@ public:
       terrain_scale = p.vector_value;
       return true;
     } else if (p.name == "QuadVisibilityBitmap") {
-      quad_visibility_bitmap.append(p.data_value.begin() + 2, p.data_value.end());
+      quad_visibility_bitmap.append(p.data_value.begin(), p.data_value.end());
       return true;
     } else if (p.name == "EdgeTurnBitmap") {
-      edge_turn_bitmap.append(p.data_value.begin() + 2, p.data_value.end());
+      edge_turn_bitmap.append(p.data_value.begin(), p.data_value.end());
       return true;
     } else if (p.name == "MapX") {
       map_x = p.int32_t_value;
