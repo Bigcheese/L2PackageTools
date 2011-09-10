@@ -10,11 +10,13 @@
 #include "l2p/Package.h"
 #include "l2p/UObject.h"
 
+#include "boost/program_options.hpp"
+
 #include <iostream>
 
 int main(int argc, char *argv[]) {
-  if (argc != 2) {
-    std::cerr << "l2ptest l2-root-path\n";
+  if (argc != 3) {
+    std::cerr << "l2ptest l2-root-path package-name\n";
     return 1;
   }
 
@@ -23,11 +25,15 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  l2p::Package *p = l2p::Package::GetPackage("22_22");
-  std::vector<std::shared_ptr<l2p::ABlockingVolume>> blocking_volumes;
-  p->GetObjects("BlockingVolume", blocking_volumes);
+  l2p::Package *p = l2p::Package::GetPackage(argv[2]);
+  std::vector<std::shared_ptr<l2p::UStaticMesh>> smeshes;
+  p->GetObjects("StaticMesh", smeshes);
 
-  std::shared_ptr<l2p::UModel> sm = blocking_volumes.front()->brush;
+  for (auto i = smeshes.begin(), e = smeshes.end(); i != e; ++i) {
+    if ((*i)->UseSimpleBoxCollision) {
+      std::cout << (*i)->name.str() << "\n";
+    }
+  }
 
   return 0;
 }
