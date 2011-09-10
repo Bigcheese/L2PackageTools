@@ -559,7 +559,26 @@ typedef struct {
         uint16 data[_size]; 
 } uint16Array;
 
+typedef struct {
+    float matrix[16];
+    Plane plane;
+    char data[4];
+} SMUnknownStruct01;
+
+typedef struct {
+    Index count;
+    local int _size = IndexReadInt(count);
+    if (_size > 0)
+        SMUnknownStruct01 data[_size];
+} SMUnknownStruct01Array;
+
+typedef struct {
+    uint32 unknown;
+    Plane planes[4];
+} kDOP;
+
 typedef struct (Export &e) {
+    local int start_pos = FTell();
     if (e.flags.flags & RF_HasStack) {
         Index node;
         Index state_node;
@@ -620,7 +639,17 @@ typedef struct (Export &e) {
         uint32 unknown;
         uint16Array vertex_indices_2;
         uint32 unknown;
+        uint32 unknown;
+        uint32 unknown;
+        Index unknown_index;
+        char unk01[2];
+        kDOP kdop[35];
     }
+
+    local int length = FTell() - start_pos;
+    local int leftover = IndexReadInt(export_table[i].serial_size) - length;
+    if (leftover > 0)
+        char unknown_after[leftover];
 
 
 /* else if (FClassRead(e.class) == "Core.Class'Level'" && FNameRead(e.name) == "myLevel") {
