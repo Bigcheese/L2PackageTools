@@ -316,7 +316,7 @@ std::shared_ptr<UObject> Package::GetObject(int index) {
 
   if (index < 0) {
     index = -index - 1;
-    if (index >= import_table.size())
+    if (std::size_t(index) >= import_table.size())
       throw std::runtime_error("Invalid index");
     Import &import = import_table[index];
     if (import.package == 0)
@@ -325,7 +325,7 @@ std::shared_ptr<UObject> Package::GetObject(int index) {
     // Find the name of the package this import is in.
     Import *package_import = &import;
     do {
-      if (-package_import->package > import_table.size())
+      if (std::size_t(-package_import->package) > import_table.size())
         throw std::runtime_error("Invalid package?");
       package_import = &import_table[-package_import->package - 1];
     } while (package_import->package != 0);
@@ -334,7 +334,7 @@ std::shared_ptr<UObject> Package::GetObject(int index) {
     return target_package->GetObject(import.object_name);
   }
 
-  if (index > export_table.size())
+  if (std::size_t(index) > export_table.size())
     throw std::runtime_error("Invalid index");
   return DeserializeExport(export_table[index - 1]);
 }

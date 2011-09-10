@@ -480,7 +480,7 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
   }
 
   // Generate normals!
-  for (int i = 0; i < index_buffer.size() / 3; ++i) {
+  for (unsigned int i = 0; i < index_buffer.size() / 3; ++i) {
     Ogre::Vector3 a = vertex_buffer[index_buffer[i * 3 + 1]].position - vertex_buffer[index_buffer[i * 3]].position;
     Ogre::Vector3 b = vertex_buffer[index_buffer[i * 3]].position - vertex_buffer[index_buffer[i * 3 + 2]].position;
     Ogre::Vector3 normal = b.crossProduct(a);
@@ -490,7 +490,7 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
     vertex_buffer[index_buffer[i * 3 + 2]].normal += normal;
   }
 
-  for (int i = 0; i < vertex_buffer.size(); ++i) {
+  for (unsigned int i = 0; i < vertex_buffer.size(); ++i) {
     vertex_buffer[i].normal.normalise();
   }
 
@@ -573,7 +573,7 @@ void TutorialApplication::loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshAc
     }
 
     // Build index buffer.
-    int tri_offset = 0;
+    unsigned int tri_offset = 0;
     for (auto i = sm->surfaces.begin(), e = sm->surfaces.end(); i != e; ++i) {
       for (int tri = 0; tri < i->triangle_count; ++tri) {
         if (tri_offset >= sm->vertex_indicies_1.size())
@@ -1006,11 +1006,11 @@ void TutorialApplication::createScene(void)
   mUnrealCordNode = mSceneMgr->getRootSceneNode()->createChildSceneNode();
   mUnrealCordNode->setScale(-1.f, 1.f, 1.f);
   mUnrealCordNode->pitch(Ogre::Degree(-90.0f));
-  mSceneMgr->setAmbientLight(Ogre::ColourValue(0.5, 0.5, 0.5));
+  mSceneMgr->setAmbientLight(Ogre::ColourValue(0.5f, 0.5f, 0.5f));
   Ogre::Light *l = mSceneMgr->createLight("MainLight");
   l->setType(Ogre::Light::LT_DIRECTIONAL);
   l->setPosition(0, 0, 0);
-  l->setDirection(Ogre::Vector3(-0.45, -0.75, -0.55).normalisedCopy());
+  l->setDirection(Ogre::Vector3(-0.45f, -0.75f, -0.55f).normalisedCopy());
   l->setDiffuseColour(0.5f, 0.5f, 0.5f);
   l->setSpecularColour(0.f, 0.f, 0.f);
 

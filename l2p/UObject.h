@@ -422,9 +422,9 @@ class UTexture : public UBitmapMaterial {
     static_cast<std::istream&>(p).read(giant_buffer_of_dont_care, 12);
 
     if (Format == TEXF_G16) {
-      uint32_t size = USize * VSize;
+      int32_t size = USize * VSize;
       G16_data.resize(size);
-      for (uint32_t i = 0; i < size; ++i) {
+      for (int32_t i = 0; i < size; ++i) {
         p >> Extract<ulittle16_t>(G16_data[i]);
       }
     }
@@ -683,9 +683,9 @@ public:
     draw_scale_3d.X = 1.f;
     draw_scale_3d.Y = 1.f;
     draw_scale_3d.Z = 1.f;
-    rotation.pitch = 0.f;
-    rotation.yaw = 0.f;
-    rotation.roll = 0.f;
+    rotation.pitch = 0;
+    rotation.yaw = 0;
+    rotation.roll = 0;
     pre_pivot.X = 0.f;
     pre_pivot.Y = 0.f;
     pre_pivot.Z = 0.f;
