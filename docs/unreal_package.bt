@@ -233,6 +233,8 @@ typedef struct {
     byte sheer_axis;
 } Scale;
 
+struct Property;
+
 typedef struct {
     FName name;
     if (FNameRead(name) == "None")
@@ -267,8 +269,22 @@ typedef struct {
     case 0x06: FClass value; break;
     case 0x07: char value[_size]; break; // String
     case 0x08: char value[_size]; break; // Class
-    case 0x09: char value[_size]; break; // Array
-    case 0x0A:
+    case 0x09: // Array
+        local int lstart = FTell();
+        Index array_size;
+        local int i;
+        for (i = 0; i < IndexReadInt(array_size); ++i) {
+            while (1) {
+                Property value;
+                if (FNameRead(value.name) == "None")
+                    break;
+            }
+        }
+        local int leftoverstuff = size_left - (FTell() - lstart);
+        if (leftoverstuff > 0)
+            char unkvalue[leftoverstuff];
+        break;
+    case 0x0A: // Struct
         if (FNameRead(struct_name) == "Vector") {
             Vector value;
             size_left -= sizeof(Vector);
