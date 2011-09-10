@@ -84,7 +84,7 @@ void TutorialApplication::loadMap(l2p::StringRef name) {
       m = *i;
   }
 
-  // Get region from path.
+  // Get region from name.
   {
     name.substr(0, 2).getAsInteger(10, m->regionX);
     name.substr(3, 2).getAsInteger(10, m->regionY);
