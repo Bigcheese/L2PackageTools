@@ -331,6 +331,8 @@ std::shared_ptr<UObject> Package::GetObject(int index) {
     } while (package_import->package != 0);
     // package_import is now the import entry for the physical package.
     Package *target_package = Package::GetPackage(package_import->object_name);
+    if (!target_package)
+      return nullptr;
     return target_package->GetObject(import.object_name);
   }
 
