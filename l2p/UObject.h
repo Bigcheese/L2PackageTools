@@ -633,8 +633,14 @@ struct SMeshCoords {
   }
 };
 
+struct SMeshMaterial {
+  bool enable_collision;
+  ObjectRef<UMaterial> material;
+};
+
 class UStaticMesh : public UPrimative {
 public:
+  // Native serialized data.
   std::vector<SMeshSurface> surfaces;
   Box another_bb;
   std::vector<SMeshVertex> vertices;
@@ -643,6 +649,39 @@ public:
   std::vector<SMeshCoords> texture_coords;
   std::vector<uint16_t> vertex_indicies_1;
   std::vector<uint16_t> vertex_indicies_2;
+
+  // Properties.
+  std::vector<SMeshMaterial> Materials;
+  bool UseSimpleLineCollision;
+  bool UseSimpleBoxCollision;
+  bool UseSimpleKarmaCollision;
+
+  UStaticMesh()
+    : UseSimpleLineCollision(false)
+    , UseSimpleBoxCollision(true)
+    , UseSimpleKarmaCollision(true) {
+  }
+
+  virtual bool SetProperty(const Property &p) {
+    if (UPrimative::SetProperty(p))
+      return true;
+
+    if (p.name == "Materials") {
+      //for (int i = 0; i < p.ar
+      return true;
+    } else if (p.name == "UseSimpleLineCollision") {
+      UseSimpleLineCollision = p.is_array;
+      return true;
+    } else if (p.name == "UseSimpleBoxCollision") {
+      UseSimpleBoxCollision = p.is_array;
+      return true;
+    } else if (p.name == "UseSimpleKarmaCollision") {
+      UseSimpleKarmaCollision = p.is_array;
+      return true;
+    }
+
+    return false;
+  }
 
   void Deserialize(Package &p) {
     UPrimative::Deserialize(p);
@@ -660,7 +699,8 @@ public:
         >> ExtractArray<Index, SMeshCoords>(texture_coords)
         >> ExtractArray<Index, ulittle16_t>(vertex_indicies_1)
         >> Extract<ulittle32_t>(unk)
-        >> ExtractArray<Index, ulittle16_t>(vertex_indicies_2);
+        >> ExtractArray<Index, ulittle16_t>(vertex_indicies_2)
+        >> Extract<ulittle32_t>(unk);
   }
 };
 
