@@ -369,6 +369,8 @@ std::shared_ptr<UObject> Package::DeserializeExport(Export &e) {
     ret.reset(new ABrush);
   } else if (class_name == "BlockingVolume") {
     ret.reset(new ABlockingVolume);
+  } else if (class_name == "WaterVolume") {
+    ret.reset(new AWaterVolume);
   } else {
     // Unknown, but it must be a child of UObject, so use that.
     ret.reset(new UObject);

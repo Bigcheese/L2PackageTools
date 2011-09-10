@@ -7,12 +7,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-float4 main_fp( float4 color : COLOR) : COLOR {
+float4 main_fp(uniform float3 color) : COLOR {
   float4 oColor;
 
-  oColor.r = 1.0;
-  oColor.g = 0.0;
-  oColor.b = 0.0;
+  oColor.rgb = color;
   oColor.a = 0.5;
 
   return oColor;

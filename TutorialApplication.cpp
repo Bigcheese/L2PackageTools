@@ -94,17 +94,21 @@ void TutorialApplication::loadMap(l2p::StringRef name) {
   if (m->points.size() != 0)
     loadBSP(m);
 
-  std::vector<std::shared_ptr<l2p::ABlockingVolume>> blocking_volumes;
-  package->GetObjects("BlockingVolume", blocking_volumes);
-  for (auto i = blocking_volumes.begin(), e = blocking_volumes.end(); i != e; ++i) {
+  std::vector<std::shared_ptr<l2p::AVolume>> volumes;
+  package->GetObjects("BlockingVolume", volumes);
+  package->GetObjects("WaterVolume", volumes);
+  for (auto i = volumes.begin(), e = volumes.end(); i != e; ++i) {
     std::shared_ptr<l2p::UModel> m = (*i)->brush;
     if (m) {
       Ogre::SceneNode *n = loadBSP(m, false);
       if (n) {
         assignActorPropsToNode(*i, n);
-        n->showBoundingBox(true);
-        dynamic_cast<Ogre::Entity*>(
-          n->getAttachedObject(0))->setMaterialName("Volume/Display");
+        if (std::dynamic_pointer_cast<l2p::AWaterVolume>(*i))
+          dynamic_cast<Ogre::Entity*>(
+            n->getAttachedObject(0))->setMaterialName("Volume/Water");
+        else
+          dynamic_cast<Ogre::Entity*>(
+            n->getAttachedObject(0))->setMaterialName("Volume/Blocking");
       }
     }
   }

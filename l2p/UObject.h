@@ -809,6 +809,20 @@ public:
 class AVolume : public ABrush {};
 class ABlockingVolume : public AVolume {};
 
+class APhysicsVolume : public AVolume {
+public:
+  bool bWaterVolume;
+
+  APhysicsVolume() : bWaterVolume(false) {}
+};
+
+class AWaterVolume : public APhysicsVolume {
+public:
+  AWaterVolume() {
+    bWaterVolume = true;
+  }
+};
+
 }
 
 #endif

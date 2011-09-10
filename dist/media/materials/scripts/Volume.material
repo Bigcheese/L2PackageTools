@@ -5,7 +5,7 @@ fragment_program Volume/VolumeFP cg
   profiles ps_1_1 arbfp1
 }
 
-material Volume/Display
+material Volume/Blocking
 {
   technique
   {
@@ -16,6 +16,24 @@ material Volume/Display
 
       fragment_program_ref Volume/VolumeFP
       {
+        param_named color float3 1.0 0.0 0.0
+      }
+    }
+  }
+}
+
+material Volume/Water
+{
+  technique
+  {
+    pass
+    {
+      scene_blend alpha_blend
+      depth_write off
+
+      fragment_program_ref Volume/VolumeFP
+      {
+        param_named color float3 0.0 0.0 1.0
       }
     }
   }
