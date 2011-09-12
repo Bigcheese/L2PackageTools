@@ -44,6 +44,7 @@ protected:
   std::string mPathnodeL2JDir;
   std::string mGeodataL2JDir;
   std::vector<std::pair<int, int>> mLoadedRegions;
+  bool mIgnoreNonCollidable;
 };
 
 #endif // #ifndef __TutorialApplication_h_

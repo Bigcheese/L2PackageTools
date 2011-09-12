@@ -1025,6 +1025,7 @@ void TutorialApplication::createScene(void)
     ("pathnode-off", po::value<std::string>(), "Path to the official pathnode file")
     ("pathnode-l2j", po::value<std::string>(), "Directory containing l2j pathnode files")
     ("geodata-l2j", po::value<std::string>(), "Directory containing l2j geodata files")
+    ("ignore-non-collidable", po::value<bool>(), "Don't display non-collidable geometry")
     ("input", po::value<std::vector<std::string>>(), "input")
     ;
 
@@ -1041,6 +1042,11 @@ void TutorialApplication::createScene(void)
   }
 
   l2p::Package::Initialize(vm["root"].as<std::string>());
+
+  if (vm.count("ignore-non-collidable"))
+    mIgnoreNonCollidable = true;
+  else
+    mIgnoreNonCollidable = false;
 
   // Load maps.
   if (vm.count("input")) {
