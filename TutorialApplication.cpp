@@ -127,9 +127,10 @@ void TutorialApplication::loadMap(l2p::StringRef name) {
   for (auto i = smeshes.begin(), e = smeshes.end(); i != e; ++i) {
     if (  (*i)->bHidden
        || (*i)->bDeleteMe
-       || !(*i)->bCollideActors
-       || !(*i)->bBlockActors
-       || !(*i)->bBlockPlayers
+       || mIgnoreNonCollidable
+        && (!(*i)->bCollideActors
+         || !(*i)->bBlockActors
+         || !(*i)->bBlockPlayers)
        )
       continue;
     loadStaticMeshActor(*i);
