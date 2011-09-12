@@ -661,16 +661,14 @@ void TutorialApplication::loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshAc
           if (format != Ogre::PF_UNKNOWN) {
             Ogre::TexturePtr tptr = Ogre::TextureManager::getSingleton().getByName(tex->name);
             if (tptr.isNull()) {
-              tptr = Ogre::TextureManager::getSingleton().createManual(
-                  tex->name
-                , "General"
-                , Ogre::TEX_TYPE_2D
-                , tex->USize
-                , tex->VSize
-                , 1
-                , format);
-              Ogre::DataStreamPtr pmds(new Ogre::MemoryDataStream(tex->mips[0].getAs<uint8_t>(), tex->mips[0].data.size()));
-              tptr->loadRawData(pmds, tex->mips[0].USize, tex->mips[0].VSize, format);
+              std::vector<uint8_t> data;
+              for (auto i = tex->mips.begin(), e = tex->mips.end(); i != e; ++i) {
+                data.insert(data.end(), i->data.begin(), i->data.end());
+              }
+              Ogre::DataStreamPtr pmds(new Ogre::MemoryDataStream(&data.front(), data.size()));
+              Ogre::Image img;
+              img.loadRawData(pmds, tex->USize, tex->VSize, 1, format, 1, tex->mips.size() - 1);
+              tptr = Ogre::TextureManager::getSingleton().loadImage(tex->name, Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME, img);
             }
             subMesh->setMaterialName("StaticMesh/Checker");
             subMesh->addTextureAlias("DiffuseMap", tex->name);
