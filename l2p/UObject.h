@@ -19,6 +19,8 @@
 
 #include "boost/dynamic_bitset.hpp"
 
+#include <unordered_map>
+
 namespace l2p {
 
 struct Property;
@@ -215,6 +217,7 @@ struct Property {
     Scale scale_value;
   };
   std::vector<uint8_t> data_value;
+  std::vector<std::unordered_map<std::string, Property>> property_list;
 
   friend Package &operator >>(Package &pa, Property &p) {
     pa >> p.name;
@@ -258,8 +261,30 @@ struct Property {
         std::streampos a = static_cast<std::istream&>(pa).tellg();
         pa >> Extract<Index>(p.array_size);
         std::streamoff asize = static_cast<std::istream&>(pa).tellg() - a;
-        p.data_value.resize(std::size_t(p.size - asize));
-        static_cast<std::istream&>(pa).read((char*)&p.data_value.front(), p.size - asize);
+
+        // HACK: This information actually has to be passed by the
+        //       UClass/UStruct so that we know how to interpret the data.
+        if (p.name == "Materials") {
+          p.property_list.reserve(p.array_size);
+          std::streampos prop_array_start = static_cast<std::istream&>(pa).tellg();
+          for (int i = 0; i < p.array_size; ++i) {
+            std::unordered_map<std::string, Property> pmap;
+            while (true) {
+              Property ap;
+              pa >> ap;
+              if (ap.name == "None")
+                break;
+              pmap[ap.name] = std::move(ap);
+            }
+            p.property_list.push_back(std::move(pmap));
+          }
+          std::streampos prop_array_end = static_cast<std::istream&>(pa).tellg();
+          assert((prop_array_end - prop_array_start) == p.size - asize &&
+                 "Failed to properly deserialize property of type array!");
+        } else {
+          p.data_value.resize(std::size_t(p.size - asize));
+          static_cast<std::istream&>(pa).read((char*)&p.data_value.front(), p.size - asize);
+        }
       }
       break;
     case 0x0A:
