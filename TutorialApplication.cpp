@@ -285,8 +285,9 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
   std::vector<BufferVert> vertex_buffer;
   std::vector<Ogre::RGBA> color_buffer;
   std::vector<uint32_t> index_buffer;
-  // Make a copy of height_map because we are going to modify it.
-  std::vector<uint16_t> &height_map = ti->terrain_map->G16_data;
+  if (ti->terrain_map->mips.size() == 0)
+    return;
+  l2p::ulittle16_t *height_map = ti->terrain_map->mips[0].getAs<l2p::ulittle16_t>();
   Ogre::Vector3 location = ogre_cast(ti->location);
   Ogre::Vector3 scale = ogre_cast(ti->terrain_scale);
   int32_t USize = ti->terrain_map->USize;
@@ -373,12 +374,12 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
       pname.str(std::string());
       pname << ti->map_x << "_" << ti->map_y + 1;
       std::shared_ptr<l2p::UTexture> tm = std::dynamic_pointer_cast<l2p::UTexture>(terrain_south->GetObject(l2p::Package::GetName(pname.str())));
-      if (tm) {
+      if (tm && tm->mips.size() > 0) {
         int y = VSize;
         for (int x = 0; x < USize; ++x) {
           Ogre::Vector3 v( (x * scale.x) + translation.x
                          , (y * scale.y) + translation.y
-                         , (tm->G16_data[x] * (scale.z / 256.f)) + translation.z
+                         , (tm->mips[0].getAs<l2p::ulittle16_t>()[x] * (scale.z / 256.f)) + translation.z
                          );
           box.merge(v);
           BufferVert bv = {v, Ogre::Vector3(0.f, 0.f, 0.f), 0};
@@ -411,12 +412,12 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
       pname.str(std::string());
       pname << ti->map_x + 1 << "_" << ti->map_y;
       std::shared_ptr<l2p::UTexture> tm = std::dynamic_pointer_cast<l2p::UTexture>(terrain_east->GetObject(l2p::Package::GetName(pname.str())));
-      if (tm) {
+      if (tm && tm->mips.size() > 0) {
         const int x = USize;
         for (int y = 0; y < VSize; ++y) {
           Ogre::Vector3 v( (x * scale.x) + translation.x
                          , (y * scale.y) + translation.y
-                         , (tm->G16_data[y * USize] * (scale.z / 256.f)) + translation.z
+                         , (tm->mips[0].getAs<l2p::ulittle16_t>()[y * USize] * (scale.z / 256.f)) + translation.z
                          );
           box.merge(v);
           BufferVert bv = {v, Ogre::Vector3(0.f, 0.f, 0.f), 0};
@@ -449,12 +450,12 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
       pname.str(std::string());
       pname << ti->map_x + 1 << "_" << ti->map_y + 1;
       std::shared_ptr<l2p::UTexture> tm = std::dynamic_pointer_cast<l2p::UTexture>(terrain_south_east->GetObject(l2p::Package::GetName(pname.str())));
-      if (tm) {
+      if (tm && tm->mips.size() > 0) {
         const int x = USize;
         const int y = VSize;
         Ogre::Vector3 v( (x * scale.x) + translation.x
                        , (y * scale.y) + translation.y
-                       , (tm->G16_data[0] * (scale.z / 256.f)) + translation.z
+                       , (tm->mips[0].getAs<l2p::ulittle16_t>()[0] * (scale.z / 256.f)) + translation.z
                        );
         box.merge(v);
         BufferVert bv = {v, Ogre::Vector3(0.f, 0.f, 0.f), 0};
@@ -577,15 +578,11 @@ void TutorialApplication::loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshAc
     }
 
     // Build index buffer.
-    unsigned int tri_offset = 0;
     for (auto i = sm->surfaces.begin(), e = sm->surfaces.end(); i != e; ++i) {
-      for (int tri = 0; tri < i->triangle_count; ++tri) {
-        if (tri_offset >= sm->vertex_indicies_1.size())
-          break;
-        index_buffer.push_back(sm->vertex_indicies_1[tri_offset + 2]);
-        index_buffer.push_back(sm->vertex_indicies_1[tri_offset + 1]);
-        index_buffer.push_back(sm->vertex_indicies_1[tri_offset]);
-        tri_offset += 3;
+      for (int tri = 0; tri < i->triangle_max; ++tri) {
+        index_buffer.push_back(sm->vertex_indicies_1[i->index_offset + (tri * 3) + 2]);
+        index_buffer.push_back(sm->vertex_indicies_1[i->index_offset + (tri * 3) + 1]);
+        index_buffer.push_back(sm->vertex_indicies_1[i->index_offset + (tri * 3)]);
       }
     }
 
@@ -619,11 +616,75 @@ void TutorialApplication::loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshAc
         Ogre::HardwareBuffer::HBU_STATIC_WRITE_ONLY);
 
     ibuf->writeData(0, ibuf->getSizeInBytes(), &index_buffer.front(), true);
-    Ogre::SubMesh *subMesh = mesh->createSubMesh();
-    subMesh->useSharedVertices = true;
-    subMesh->indexData->indexBuffer = ibuf;
-    subMesh->indexData->indexCount  = index_buffer.size();
-    subMesh->indexData->indexStart  = 0;
+    for (auto i = sm->surfaces.begin(), e = sm->surfaces.end(); i != e; ++i) {
+      l2p::SMeshMaterial &smm =
+        sm->materials[std::distance(sm->surfaces.begin(), i)];
+      if (i->triangle_max == 0 || (mIgnoreNonCollidable && !smm.enable_collision))
+        continue;
+      Ogre::SubMesh *subMesh = mesh->createSubMesh();
+      // Setup geometry.
+      subMesh->useSharedVertices = true;
+      subMesh->indexData->indexBuffer = ibuf;
+      subMesh->indexData->indexStart  = i->index_offset;
+      subMesh->indexData->indexCount  = i->triangle_max * 3;
+
+      // Setup material.
+      std::shared_ptr<l2p::UMaterial> mat = smm.material;
+      if (mat) {
+        std::shared_ptr<l2p::UTexture> tex;
+        std::shared_ptr<l2p::UShader> shader = std::dynamic_pointer_cast<l2p::UShader>(mat);
+        if (shader)
+          tex = shader->Diffuse;
+        else
+          tex = std::dynamic_pointer_cast<l2p::UTexture>(mat);
+        if (tex && tex->mips.size() > 0) {
+          Ogre::PixelFormat format = Ogre::PF_UNKNOWN;
+          switch (tex->Format) {
+            case l2p::UTexture::TEXF_DXT1:
+              format = Ogre::PF_DXT1;
+              break;
+            case l2p::UTexture::TEXF_DXT3:
+              format = Ogre::PF_DXT3;
+              break;
+            case l2p::UTexture::TEXF_DXT5:
+              format = Ogre::PF_DXT5;
+              break;
+            case l2p::UTexture::TEXF_RGBA8:
+              format = Ogre::PF_R8G8B8A8;
+              break;
+            default:
+              std::stringstream ss;
+              ss << tex->name.str() << ": " << "Unknown texture format " << tex->Format;
+              Ogre::LogManager::getSingleton().logMessage(Ogre::LML_NORMAL, ss.str());
+              break;
+          }
+          if (format != Ogre::PF_UNKNOWN) {
+            Ogre::TexturePtr tptr = Ogre::TextureManager::getSingleton().getByName(tex->name);
+            if (tptr.isNull()) {
+              tptr = Ogre::TextureManager::getSingleton().createManual(
+                  tex->name
+                , "General"
+                , Ogre::TEX_TYPE_2D
+                , tex->USize
+                , tex->VSize
+                , 1
+                , format);
+              Ogre::DataStreamPtr pmds(new Ogre::MemoryDataStream(tex->mips[0].getAs<uint8_t>(), tex->mips[0].data.size()));
+              tptr->loadRawData(pmds, tex->mips[0].USize, tex->mips[0].VSize, format);
+            }
+            subMesh->setMaterialName("StaticMesh/Checker");
+            subMesh->addTextureAlias("DiffuseMap", tex->name);
+            subMesh->updateMaterialUsingTextureAliases();
+          }
+        }
+      } else {
+        std::stringstream ss;
+        ss << sm->name.str() << ": " << "Failed to get material " << smm.material.package->GetObjectName(smm.material.index).str();
+        Ogre::LogManager::getSingleton().logMessage(Ogre::LML_NORMAL, ss.str());
+      }
+    }
+
+    mesh->updateMaterialForAllSubMeshes();
 
     Ogre::AxisAlignedBox box(ogre_cast(sm->bounding_box.min), ogre_cast(sm->bounding_box.max));
     mesh->_setBounds(box);
@@ -636,7 +697,6 @@ void TutorialApplication::loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshAc
   ent_name += ".";
   ent_name += sma->name;
   Ogre::Entity *ent = mSceneMgr->createEntity(ent_name, smesh_name, "General");
-  ent->setMaterialName("StaticMesh/Checker");
   ent->setRenderingDistance(ent->getBoundingRadius() * 75.f);
   Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
   node->attachObject(ent);

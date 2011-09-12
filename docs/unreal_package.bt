@@ -507,7 +507,8 @@ typedef struct {
 
 typedef struct {
     uint32 unknown;
-    uint32 offset_size;
+    uint16 a;
+    uint16 b;
     uint16 vertex_max;
     uint16 triangle_count;
     uint16 triangle_max;
@@ -593,6 +594,16 @@ typedef struct {
     Plane planes[4];
 } kDOP;
 
+typedef struct {
+    int huh;
+    Index size;
+    char data[IndexReadInt(this.size)];
+    int USize;
+    int VSize;
+    byte UBits;
+    byte VBits;
+} MIP;
+
 typedef struct (Export &e) {
     local int start_pos = FTell();
     if (e.flags.flags & RF_HasStack) {
@@ -633,12 +644,34 @@ typedef struct (Export &e) {
     } else if (FClassRead(e.class) == "Core.Class'Texture'") {
         char stuff[36];
         Index number_of_something;
-        Index name_len;
-        char name[IndexReadInt(name_len)];
-        char huh;
-        Index shader_len;
-        char shader[IndexReadInt(shader_len)];
-        char more_stuff[12];
+        local int i = 0;
+        for (i = 0; i < IndexReadInt(this.number_of_something); ++i) {
+            Index name_len;
+            char name[IndexReadInt(name_len)];
+            char huh;
+            Index shader_len;
+            char shader[IndexReadInt(shader_len)];
+        }
+        char more_stuff[4];
+        // Try and find the format.
+        local int format = 6;
+        local int USize = 0;
+        local int VSize = 0;
+        i = 0;
+        while (exists(this.property[i])) {
+            if (FNameRead(this.property[i].name) == "Format") {
+                format = this.property[i].value;
+            } else if (FNameRead(this.property[i].name) == "USize") {
+                USize = this.property[i].value;
+            } else if (FNameRead(this.property[i].name) == "VSize") {
+                VSize = this.property[i].value;
+            }
+            ++i;
+        }
+        Index mips_count;
+        for (i = 0; i < IndexReadInt(mips_count); ++i) {
+            MIP mips;
+        }
     } else if (FClassRead(e.class) == "Core.Class'StaticMesh'") {
         Box bounding_box;
         Sphere bounding_sphere;
@@ -664,8 +697,8 @@ typedef struct (Export &e) {
 
     local int length = FTell() - start_pos;
     local int leftover = IndexReadInt(export_table[i].serial_size) - length;
-    if (leftover > 0)
-        char unknown_after[leftover];
+    //if (leftover > 0)
+      //  char unknown_after[leftover];
 
 
 /* else if (FClassRead(e.class) == "Core.Class'Level'" && FNameRead(e.name) == "myLevel") {

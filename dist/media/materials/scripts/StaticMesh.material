@@ -18,7 +18,7 @@ material StaticMesh/Checker
   {
     pass
     {
-      texture_unit
+      texture_unit DiffuseMap
       {
         texture checker.png
       }

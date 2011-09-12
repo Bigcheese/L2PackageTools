@@ -141,7 +141,8 @@ public:
   std::shared_ptr<UObject> GetObject(Name name);
 
   Name GetObjectName(int index) {
-    assert(index != 0 && "Invalid index!");
+    if (index == 0)
+      return GetName("None");
     if (index < 0)
       return import_table[-index - 1].object_name;
     else

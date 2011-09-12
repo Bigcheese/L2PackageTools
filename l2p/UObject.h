@@ -426,9 +426,34 @@ public:
   }
 };
 
+struct MIPS {
+  int32_t unknown;
+  std::vector<uint8_t> data;
+  int32_t USize;
+  int32_t VSize;
+  int8_t UBits;
+  int8_t VBits;
+
+  // Helper to access data.
+  template<class T>
+  T *getAs() {
+    return reinterpret_cast<T*>(&data.front());
+  }
+
+  friend Package &operator >>(Package &p, MIPS &m) {
+    p >> Extract<little32_t>(m.unknown)
+      >> ExtractArray<Index, ulittle8_t>(m.data)
+      >> Extract<little32_t>(m.USize)
+      >> Extract<little32_t>(m.VSize)
+      >> Extract<little8_t>(m.UBits)
+      >> Extract<little8_t>(m.VBits);
+    return p;
+  }
+};
+
 class UTexture : public UBitmapMaterial {
   public:
-  std::vector<uint16_t> G16_data;
+  std::vector<MIPS> mips;
 
   virtual bool SetProperty(const Property &p) {
     if (UBitmapMaterial::SetProperty(p))
@@ -444,22 +469,73 @@ class UTexture : public UBitmapMaterial {
     static_cast<std::istream&>(p).read(giant_buffer_of_dont_care, 36);
     Index dontcare;
     p >> dontcare;
+    if (dontcare == 0)
+      return;
     p >> dontcare;
     static_cast<std::istream&>(p).read(giant_buffer_of_dont_care, dontcare);
     static_cast<std::istream&>(p).read(giant_buffer_of_dont_care, 1);
     p >> dontcare;
     static_cast<std::istream&>(p).read(giant_buffer_of_dont_care, dontcare);
-    static_cast<std::istream&>(p).read(giant_buffer_of_dont_care, 12);
+    static_cast<std::istream&>(p).read(giant_buffer_of_dont_care, 4);
 
-    if (Format == TEXF_G16) {
-      int32_t size = USize * VSize;
-      G16_data.resize(size);
-      for (int32_t i = 0; i < size; ++i) {
-        p >> Extract<ulittle16_t>(G16_data[i]);
-      }
-    }
+    p >> ExtractArray<Index, MIPS>(mips);
+  }
+};
+
+class UShader : public URenderedMaterial {
+public:
+  enum EOutputBlending {
+    OB_Normal,
+    OB_Masked,
+    OB_Modulate,
+    OB_Translucent,
+    OB_Invisible,
+    OB_Brighten,
+    OB_Darken,
+  } OutputBlending;
+
+  ObjectRef<UTexture> Diffuse;
+  ObjectRef<UTexture> Opacity;
+  ObjectRef<UTexture> Specular;
+  ObjectRef<UTexture> SpecularMask;
+  ObjectRef<UTexture> SelfIllumination;
+  ObjectRef<UTexture> SelfIlluminationMask;
+  ObjectRef<UTexture> Detail;
+  float DetailScale;
+  bool TwoSided;
+  bool Wireframe;
+  bool ModulateStaticLighting2X;
+  bool PerformLightingOnSpecularPass;
+  bool TreatAsTwoSided;
+  bool ZWrite;
+  bool AlphaTest;
+  uint8_t AlphaRef;
+  ObjectRef<UTexture> NormalMap;
+  float BumpOffsetScaleFactor;
+  float BumpOffsetBiasFactor;
+  ObjectRef<UTexture> SpecularMap;
+  float SpecularPower;
+  float SpecularScale;
+
+  UShader()
+    : DetailScale(8.f)
+    , ZWrite(true)
+    , SpecularPower(15.f)
+    , SpecularScale(1.f) {
   }
 
+  virtual bool SetProperty(const Property &p) {
+    if (URenderedMaterial::SetProperty(p))
+      return true;
+
+    if (p.name == "Diffuse") {
+      Diffuse.index = p.index_value;
+      Diffuse.package = package;
+      return true;
+    }
+
+    return false;
+  }
 };
 
 struct BSPNode {
@@ -470,7 +546,7 @@ struct BSPNode {
   Index surface;
   Index back;
   Index front;
-  Index i_plane; // Nexy coplanar poly.
+  Index i_plane; // Next coplanar poly.
   Index collision_bound;
   Index render_bound;
   Vector unknown_point;
@@ -598,14 +674,16 @@ public:
 
 struct SMeshSurface {
   uint32_t unknown;
-  uint32_t offset_size;
+  uint16_t index_offset;
+  uint16_t unknown01;
   uint16_t vertex_max;
   uint16_t triangle_count;
   uint16_t triangle_max;
 
   friend Package &operator >>(Package &p, SMeshSurface &sms) {
     p >> Extract<ulittle32_t>(sms.unknown)
-      >> Extract<ulittle32_t>(sms.offset_size)
+      >> Extract<ulittle16_t>(sms.index_offset)
+      >> Extract<ulittle16_t>(sms.unknown01)
       >> Extract<ulittle16_t>(sms.vertex_max)
       >> Extract<ulittle16_t>(sms.triangle_count)
       >> Extract<ulittle16_t>(sms.triangle_max);
@@ -676,7 +754,7 @@ public:
   std::vector<uint16_t> vertex_indicies_2;
 
   // Properties.
-  std::vector<SMeshMaterial> Materials;
+  std::vector<SMeshMaterial> materials;
   bool UseSimpleLineCollision;
   bool UseSimpleBoxCollision;
   bool UseSimpleKarmaCollision;
@@ -692,7 +770,20 @@ public:
       return true;
 
     if (p.name == "Materials") {
-      //for (int i = 0; i < p.ar
+      for (int i = 0; i < p.array_size; ++i) {
+        SMeshMaterial smm;
+        auto itter = p.property_list[i].find("EnableCollision");
+        if (itter != p.property_list[i].end())
+          smm.enable_collision = itter->second.is_array;
+        else
+          smm.enable_collision = false;
+        itter = p.property_list[i].find("Material");
+        if (itter != p.property_list[i].end()) {
+          smm.material.index = itter->second.index_value;
+          smm.material.package = package;
+        }
+        materials.push_back(std::move(smm));
+      }
       return true;
     } else if (p.name == "UseSimpleLineCollision") {
       UseSimpleLineCollision = p.is_array;
