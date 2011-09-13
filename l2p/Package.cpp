@@ -92,6 +92,8 @@ public:
         return -1;
       }
 
+      wide_key = key | key << 8 | key << 16 | key << 24;
+
       // Get the total file size so we know when to return EOF.
       file_size = io::seek(d, 0, std::ios::end, std::ios::in);
       io::seek(d, 28, std::ios::beg, std::ios::in);
@@ -102,9 +104,19 @@ public:
     }
 
     std::streamsize len = io::read(d, buffer, size);
+    std::streamsize left = len;
     if (len != -1) {
-      for (int i = 0; i < len; ++i) {
-        buffer[i] ^= key;
+      for (std::streamsize i = 0, e = std::min<std::streamsize>(uintptr_t(buffer) & sizeof(uint32_t), left); i != e; ++i) {
+        *buffer++ ^= key;
+        --left;
+      }
+      for (std::streamsize i = 0, e = left / sizeof(uint32_t); i != e; ++i) {
+        *reinterpret_cast<uint32_t*>(buffer) ^= wide_key;
+        buffer += sizeof(uint32_t);
+        left -= sizeof(uint32_t);
+      }
+      for (std::streamsize i = 0, e = left; i != e; ++i) {
+        *buffer++ ^= key;
       }
     }
     return len;
@@ -124,6 +136,7 @@ public:
 private:
   bool initialized;
   uint8_t key;
+  uint32_t wide_key;
   std::streamsize file_size;
 };
 }
