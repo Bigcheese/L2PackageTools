@@ -384,8 +384,92 @@ public:
 };
 
 class UMaterial : public UObject {
+public:
   ObjectRef<UMaterial> FallbackMaterial;
   ObjectRef<UMaterial> DefaultMaterial;
+};
+
+class UModifier : public UMaterial {
+public:
+  ObjectRef<UMaterial> Material;
+
+  virtual bool SetProperty(const Property &p) {
+    if (UMaterial::SetProperty(p))
+      return true;
+
+    if (p.name == "Material") {
+      Material.index = p.index_value;
+      Material.package = package;
+      return true;
+    }
+
+    return false;
+  }
+};
+
+class UFinalBlend : public UModifier {
+public:
+  enum EFrameBufferBlending {
+    FB_Overwrite,
+    FB_Modulate,
+    FB_AlphaBlend,
+    FB_AlphaModulate_MightNotFogCorrectly,
+    FB_Translucent,
+    FB_Darken,
+    FB_Brighten,
+    FB_Invisible,
+    FB_Add,
+    FB_InWaterBlend,
+    FB_Capture,
+    FB_OverwriteAlpha,
+    FB_DarkenInv
+  } FrameBufferBlending;
+  bool ZWrite;
+  bool ZTest;
+  bool AlphaTest;
+  bool TwoSided;
+  uint8_t AlphaRef;
+  bool TreatAsTwoSided;
+
+  UFinalBlend()
+    : FrameBufferBlending(FB_Overwrite)
+    , ZWrite(true)
+    , ZTest(true)
+    , AlphaTest(false)
+    , TwoSided(false)
+    , AlphaRef(128)
+    , TreatAsTwoSided(false) {
+  }
+
+  virtual bool SetProperty(const Property &p) {
+    if (UModifier::SetProperty(p))
+      return true;
+
+    if (p.name == "FrameBufferBlending") {
+      FrameBufferBlending = static_cast<EFrameBufferBlending>(p.uint8_t_value);
+      return true;
+    } else if (p.name == "ZWrite") {
+      ZWrite = p.is_array;
+      return true;
+    } else if (p.name == "ZTest") {
+      ZTest = p.is_array;
+      return true;
+    } else if (p.name == "AlphaTest") {
+      AlphaTest = p.is_array;
+      return true;
+    } else if (p.name == "TwoSided") {
+      TwoSided = p.is_array;
+      return true;
+    } else if (p.name == "AlphaRef") {
+      AlphaRef = p.uint8_t_value;
+      return true;
+    } else if (p.name == "TreatAsTwoSided") {
+      TreatAsTwoSided = p.is_array;
+      return true;
+    }
+
+    return false;
+  }
 };
 
 class URenderedMaterial : public UMaterial {};
@@ -521,7 +605,9 @@ public:
 
   UTexture()
     : DetailScale(8.f)
-    , LODSet(LODSET_World) {
+    , LODSet(LODSET_World)
+    , bAlphaTexture(false)
+    , bTwoSided(false) {
     MipZero.r = 64;
     MipZero.g = 128;
     MipZero.b = 64;
@@ -535,8 +621,10 @@ public:
 
     if (p.name == "bAlphaTexture") {
       bAlphaTexture = p.is_array;
+      return true;
     } else if (p.name == "bTwoSided") {
       bTwoSided = p.is_array;
+      return true;
     }
 
     return false;
@@ -617,14 +705,19 @@ public:
       return true;
     } else if (p.name == "OutputBlending") {
       OutputBlending = static_cast<EOutputBlending>(p.uint8_t_value);
+      return true;
     } else if (p.name == "AlphaTest") {
       AlphaTest = p.is_array;
+      return true;
     } else if (p.name == "AlphaRef") {
       AlphaRef = p.uint8_t_value;
+      return true;
     } else if (p.name == "TreatAsTwoSided") {
       TreatAsTwoSided = p.is_array;
+      return true;
     } else if (p.name == "TwoSided") {
       TwoSided = p.is_array;
+      return true;
     }
 
     return false;

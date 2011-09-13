@@ -726,9 +726,42 @@ Ogre::MaterialPtr TutorialApplication::loadMaterial(std::shared_ptr<l2p::UMateri
     if (!diffuse_map.isNull()) {
       Ogre::Pass *pass = material->getTechnique(0)->getPass(0);
       pass->createTextureUnitState()->setTexture(diffuse_map);
-      // TODO: Figure out how to apply alpha correctly.
+      if (tex->bAlphaTexture) {
+        pass->setAlphaRejectSettings(Ogre::CMPF_GREATER_EQUAL, 128, true);
+      }
       if (tex->bTwoSided) {
         pass->setCullingMode(Ogre::CULL_NONE);
+      }
+      return material;
+    }
+  } else if (std::shared_ptr<l2p::UFinalBlend> fb = std::dynamic_pointer_cast<l2p::UFinalBlend>(mat)) {
+    Ogre::MaterialPtr back_mat = loadMaterial(fb->Material);
+    if (!back_mat.isNull()) {
+      material = back_mat->clone(fb->GetPath());
+      material->setDepthWriteEnabled(fb->ZWrite);
+      material->setDepthCheckEnabled(fb->ZTest);
+      if (fb->AlphaTest)
+        material->getTechnique(0)->getPass(0)->setAlphaRejectSettings(Ogre::CMPF_GREATER_EQUAL, fb->AlphaRef, true);
+      if (fb->TreatAsTwoSided)
+        material->setCullingMode(Ogre::CULL_NONE);
+      switch (fb->FrameBufferBlending) {
+      case l2p::UFinalBlend::FB_Overwrite:
+        material->setSceneBlending(Ogre::SBT_REPLACE);
+        break;
+      case l2p::UFinalBlend::FB_Modulate:
+        material->setSceneBlending(Ogre::SBT_MODULATE);
+        break;
+      case l2p::UFinalBlend::FB_AlphaBlend:
+        material->setSceneBlending(Ogre::SBT_TRANSPARENT_ALPHA);
+        break;
+      case l2p::UFinalBlend::FB_Add:
+        material->setSceneBlending(Ogre::SBT_ADD);
+        break;
+      default:
+        std::stringstream ss;
+        ss << fb->GetPath() << ": " << "Unknown FrameBufferBlending " << fb->FrameBufferBlending;
+        Ogre::LogManager::getSingleton().logMessage(Ogre::LML_NORMAL, ss.str());
+        break;
       }
       return material;
     }

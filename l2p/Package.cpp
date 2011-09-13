@@ -375,6 +375,8 @@ std::shared_ptr<UObject> Package::DeserializeExport(Export &e) {
     ret.reset(new AWaterVolume);
   } else if (class_name == "Shader") {
     ret.reset(new UShader);
+  } else if (class_name == "FinalBlend") {
+    ret.reset(new UFinalBlend);
   } else {
     // Unknown, but it must be a child of UObject, so use that.
     ret.reset(new UObject);
