@@ -141,31 +141,40 @@ Ogre::Real operator |(const Ogre::Vector3 &a, const Ogre::Vector3 &b) {
   return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
 }
 
+struct Surface {
+  l2p::BSPSurface *surface;
+  std::vector<uint16_t> indicies;
+  int index_start;
+};
+
 Ogre::SceneNode *TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m, bool ignoreNonVisible) {
   l2p::Name name = m->package->name;
   std::vector<float> vertex_data;
-  std::vector<uint32_t> index_buf;
+  std::vector<uint16_t> index_buf;
+  std::vector<Surface> surfaces(m->surfaces.size());
   l2p::Box bounds;
 
   // Build vertex and index buffer.
   for (auto ni = m->nodes.begin(), ne = m->nodes.end(); ni != ne; ++ni) {
     l2p::BSPNode &n = *ni;
-    l2p::BSPSurface &s = m->surfaces[n.surface];
+    Surface &s = surfaces[n.surface];
+    s.surface = &m->surfaces[n.surface];
 
-    if (ignoreNonVisible && ignoreNode(m.get(), n, s))
+    if (ignoreNonVisible && ignoreNode(m.get(), n, *s.surface))
       continue;
 
     uint32_t vert_start = vertex_data.size() / 8;
 
-    const Ogre::Vector3 uvec = ogre_cast(m->vectors[s.U]);
-    const Ogre::Vector3 vvec = ogre_cast(m->vectors[s.V]);
-    const Ogre::Vector3 base = ogre_cast(m->points[s.base]);
+    const Ogre::Vector3 uvec = ogre_cast(m->vectors[s.surface->U]);
+    const Ogre::Vector3 vvec = ogre_cast(m->vectors[s.surface->V]);
+    const Ogre::Vector3 base = ogre_cast(m->points[s.surface->base]);
     int usize = 0;
     int vsize = 0;
-    std::shared_ptr<l2p::UTexture> mat = s.material;
-    if (mat) {
-      usize = mat->USize;
-      vsize = mat->VSize;
+    std::shared_ptr<l2p::UMaterial> mat = s.surface->material;
+    std::shared_ptr<l2p::UTexture> tex = std::dynamic_pointer_cast<l2p::UTexture>(mat);
+    if (tex) {
+      usize = tex->USize;
+      vsize = tex->VSize;
     }
 
     if (usize == 0 || vsize == 0)
@@ -173,7 +182,7 @@ Ogre::SceneNode *TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m, bo
 
     // Vertex buffer.
     if (n.num_verticies > 0) {
-      l2p::Vector Normal = m->vectors[s.normal];
+      l2p::Vector Normal = m->vectors[s.surface->normal];
 
       for (uint32_t vert_index = 0; vert_index < n.num_verticies; ++vert_index) {
         const l2p::Vector &pos = m->points[m->vertexes[n.vert_pool + vert_index].vertex];
@@ -190,7 +199,7 @@ Ogre::SceneNode *TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m, bo
         vertex_data.push_back(tcoord.y);
       }
 
-      if (s.flags & l2p::PF_TwoSided) {
+      if (s.surface->flags & l2p::PF_TwoSided) {
         for (uint32_t vert_index = 0; vert_index < n.num_verticies; ++vert_index) {
           const l2p::Vector &pos = m->points[m->vertexes[n.vert_pool + vert_index].vertex];
           const Ogre::Vector3 dist(ogre_cast(pos) - base);
@@ -209,17 +218,25 @@ Ogre::SceneNode *TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m, bo
 
     // Index buffer.
     for (int verti = 2; verti < n.num_verticies; ++verti) {
-      index_buf.push_back(vert_start);
-      index_buf.push_back(vert_start + verti - 1);
-      index_buf.push_back(vert_start + verti);
+      s.indicies.push_back(vert_start);
+      s.indicies.push_back(vert_start + verti - 1);
+      s.indicies.push_back(vert_start + verti);
     }
-    if (s.flags & l2p::PF_TwoSided) {
+    if (s.surface->flags & l2p::PF_TwoSided) {
       for (int verti = 2; verti < n.num_verticies; ++verti) {
-        index_buf.push_back(vert_start);
-        index_buf.push_back(vert_start + verti);
-        index_buf.push_back(vert_start + verti - 1);
+        s.indicies.push_back(vert_start);
+        s.indicies.push_back(vert_start + verti);
+        s.indicies.push_back(vert_start + verti - 1);
       }
     }
+  }
+
+  // Build index buffer from surface indicies;
+  uint16_t index_start = 0;
+  for (auto i = surfaces.begin(), e = surfaces.end(); i != e; ++i) {
+    i->index_start = index_start;
+    index_buf.insert(index_buf.end(), i->indicies.begin(), i->indicies.end());
+    index_start += i->indicies.size();
   }
 
   if (vertex_data.size() == 0 || index_buf.size() == 0)
@@ -250,16 +267,25 @@ Ogre::SceneNode *TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m, bo
   // Setup index buffer.
   Ogre::HardwareIndexBufferSharedPtr ibuf =
     Ogre::HardwareBufferManager::getSingleton().createIndexBuffer(
-      Ogre::HardwareIndexBuffer::IT_32BIT,
+      Ogre::HardwareIndexBuffer::IT_16BIT,
       index_buf.size(),
       Ogre::HardwareBuffer::HBU_STATIC_WRITE_ONLY);
 
   ibuf->writeData(0, ibuf->getSizeInBytes(), &index_buf.front(), true);
-  Ogre::SubMesh *subMesh = mesh->createSubMesh();
-  subMesh->useSharedVertices = true;
-  subMesh->indexData->indexBuffer = ibuf;
-  subMesh->indexData->indexCount  = index_buf.size();
-  subMesh->indexData->indexStart  = 0;
+  for (auto i = surfaces.begin(), e = surfaces.end(); i != e; ++i) {
+    if (i->indicies.size() < 3)
+      continue;
+    Ogre::SubMesh *subMesh = mesh->createSubMesh();
+    subMesh->useSharedVertices = true;
+    subMesh->indexData->indexBuffer = ibuf;
+    subMesh->indexData->indexStart  = i->index_start;
+    subMesh->indexData->indexCount  = i->indicies.size();
+
+    std::shared_ptr<l2p::UMaterial> mat = i->surface->material;
+    if (mat) {
+      subMesh->setMaterialName(loadMaterial(mat)->getName());
+    }
+  }
 
   mesh->_setBounds(Ogre::AxisAlignedBox(bounds.min.X, bounds.min.Y, bounds.min.Z, bounds.max.X, bounds.max.Y, bounds.max.Z));
   mesh->_setBoundingSphereRadius((std::max(bounds.max.X - bounds.min.X, std::max(bounds.max.Y - bounds.min.Y, bounds.max.Z - bounds.min.Z))) / 2.0);
@@ -268,7 +294,6 @@ Ogre::SceneNode *TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m, bo
 
   Ogre::Entity *ent = mSceneMgr->createEntity(Ogre::String(name) + Ogre::String(m->name) + "E", Ogre::String(name) + Ogre::String(m->name));
   ent->setUserAny(Ogre::Any(static_cast<l2p::UObject*>(m.get())));
-  ent->setMaterialName("StaticMesh/Default");
   Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
   node->attachObject(ent);
 

@@ -783,7 +783,7 @@ enum EPolyFlags
 };
 
 struct BSPSurface {
-  ObjectRef<UTexture> material;
+  ObjectRef<UMaterial> material;
   uint32_t flags;
   Index base;
   Index normal;
