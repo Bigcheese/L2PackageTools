@@ -71,6 +71,10 @@ public:
     RF_ScriptMask         = RF_Transactional | RF_Public | RF_Final | RF_Transient | RF_NotForClient | RF_NotForServer | RF_NotForEdit | RF_Standalone
   };
 
+  std::string GetPath() {
+    return package->name.str() + "." + name.str();
+  }
+
   virtual ~UObject();
   virtual void Deserialize(Package &p);
   // Returns true if consumed.
@@ -134,6 +138,18 @@ struct Vector {
 
   friend Package &operator >>(Package &p, Vector &v) {
     p >> v.X >> v.Y >> v.Z;
+    return p;
+  }
+};
+
+struct Color {
+  uint8_t b, g, r, a;
+
+  friend Package &operator >>(Package &p, Color &c) {
+    p >> Extract<ulittle8_t>(c.b)
+      >> Extract<ulittle8_t>(c.g)
+      >> Extract<ulittle8_t>(c.r)
+      >> Extract<ulittle8_t>(c.a);
     return p;
   }
 };
@@ -367,7 +383,11 @@ public:
   }
 };
 
-class UMaterial : public UObject {};
+class UMaterial : public UObject {
+  ObjectRef<UMaterial> FallbackMaterial;
+  ObjectRef<UMaterial> DefaultMaterial;
+};
+
 class URenderedMaterial : public UMaterial {};
 
 class UBitmapMaterial : public URenderedMaterial {
@@ -386,9 +406,13 @@ public:
     TEXF_G16,
     TEXF_RRRGGGBBB,
   } Format;
-  uint8_t  UBits, VBits;
-  int32_t  USize, VSize;
-  int32_t  UClamp, VClamp;
+  uint8_t UBits, VBits;
+  int32_t USize, VSize;
+  int32_t UClamp, VClamp;
+  int32_t LossDetail;
+  int32_t MinFilter;
+  int32_t MagFilter;
+  int32_t MipFilter;
 
   enum ETexClampMode {
     TC_Wrap,
@@ -452,12 +476,69 @@ struct MIPS {
 };
 
 class UTexture : public UBitmapMaterial {
-  public:
+public:
+  enum ELODSet {
+    LODSET_None,
+    LODSET_World,
+    LODSET_PlayerSkin,
+    LODSET_WeaponSkin,
+    LODSET_Terrain,
+    LODSET_Interface,
+    LODSET_RenderMap,
+    LODSET_Lightmap
+  } LODSet;
+
+  ObjectRef<UMaterial> Detail;
+  float DetailScale;
+  Color MipZero;
+  Color MaxColor;
+  int InternalTime[2];
+  bool bMasked;
+  bool bAlphaTexture;
+  bool bTwoSided;
+  bool bHighColorQuality;
+  bool bHighTextureQuality;
+  bool bRealtime;
+  bool bParametric;
+  bool bHasComp;
+  bool bSplit9Texture;
+  int Split9X1;
+  int Split9X2;
+  int Split9X3;
+  int Split9Y1;
+  int Split9Y2;
+  int Split9Y3;
+  int NormalLOD;
+  int MinLOD;
+  ObjectRef<UTexture> AnimNext;
+  uint8_t PrimeCount;
+  float MinFrameRate;
+  float MaxFrameRate;
+  int TotalFrameNum;
+  bool OneTimeAnimLoop;
   std::vector<MIPS> mips;
+  ETextureFormat CompFormat;
+
+  UTexture()
+    : DetailScale(8.f)
+    , LODSet(LODSET_World) {
+    MipZero.r = 64;
+    MipZero.g = 128;
+    MipZero.b = 64;
+    MipZero.a = 0;
+    MaxColor.r = MaxColor.g = MaxColor.b = MaxColor.a = 255;
+  }
 
   virtual bool SetProperty(const Property &p) {
     if (UBitmapMaterial::SetProperty(p))
       return true;
+
+    if (p.name == "bAlphaTexture") {
+      bAlphaTexture = p.is_array;
+    } else if (p.name == "bTwoSided") {
+      bTwoSided = p.is_array;
+    }
+
     return false;
   }
 
@@ -521,7 +602,9 @@ public:
     : DetailScale(8.f)
     , ZWrite(true)
     , SpecularPower(15.f)
-    , SpecularScale(1.f) {
+    , SpecularScale(1.f)
+    , AlphaTest(false)
+    , AlphaRef(128) {
   }
 
   virtual bool SetProperty(const Property &p) {
@@ -532,6 +615,16 @@ public:
       Diffuse.index = p.index_value;
       Diffuse.package = package;
       return true;
+    } else if (p.name == "OutputBlending") {
+      OutputBlending = static_cast<EOutputBlending>(p.uint8_t_value);
+    } else if (p.name == "AlphaTest") {
+      AlphaTest = p.is_array;
+    } else if (p.name == "AlphaRef") {
+      AlphaRef = p.uint8_t_value;
+    } else if (p.name == "TreatAsTwoSided") {
+      TreatAsTwoSided = p.is_array;
+    } else if (p.name == "TwoSided") {
+      TwoSided = p.is_array;
     }
 
     return false;
@@ -697,18 +790,6 @@ struct SMeshVertex {
   friend Package &operator >>(Package &p, SMeshVertex &smv) {
     p >> smv.location
       >> smv.normal;
-    return p;
-  }
-};
-
-struct Color {
-  uint8_t b, g, r, a;
-
-  friend Package &operator >>(Package &p, Color &c) {
-    p >> Extract<ulittle8_t>(c.b)
-      >> Extract<ulittle8_t>(c.g)
-      >> Extract<ulittle8_t>(c.r)
-      >> Extract<ulittle8_t>(c.a);
     return p;
   }
 };

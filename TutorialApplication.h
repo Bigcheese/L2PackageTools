@@ -36,6 +36,7 @@ protected:
   void loadPathnodeOff(l2p::StringRef path);
   void loadPathnodeL2J(int regionX, int regionY);
   void loadGeodataL2J(int regionX, int regionY);
+  Ogre::MaterialPtr loadMaterial(std::shared_ptr<l2p::UMaterial> mat);
   Ogre::AxisAlignedBox getRegionAABB(int x, int y);
   virtual void createScene(void);
   virtual bool mousePressed(const OIS::MouseEvent &arg, OIS::MouseButtonID id);

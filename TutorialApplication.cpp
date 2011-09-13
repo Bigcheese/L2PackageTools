@@ -632,50 +632,7 @@ void TutorialApplication::loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshAc
       // Setup material.
       std::shared_ptr<l2p::UMaterial> mat = smm.material;
       if (mat) {
-        std::shared_ptr<l2p::UTexture> tex;
-        std::shared_ptr<l2p::UShader> shader = std::dynamic_pointer_cast<l2p::UShader>(mat);
-        if (shader)
-          tex = shader->Diffuse;
-        else
-          tex = std::dynamic_pointer_cast<l2p::UTexture>(mat);
-        if (tex && tex->mips.size() > 0) {
-          Ogre::PixelFormat format = Ogre::PF_UNKNOWN;
-          switch (tex->Format) {
-            case l2p::UTexture::TEXF_DXT1:
-              format = Ogre::PF_DXT1;
-              break;
-            case l2p::UTexture::TEXF_DXT3:
-              format = Ogre::PF_DXT3;
-              break;
-            case l2p::UTexture::TEXF_DXT5:
-              format = Ogre::PF_DXT5;
-              break;
-            case l2p::UTexture::TEXF_RGBA8:
-              format = Ogre::PF_R8G8B8A8;
-              break;
-            default:
-              std::stringstream ss;
-              ss << tex->name.str() << ": " << "Unknown texture format " << tex->Format;
-              Ogre::LogManager::getSingleton().logMessage(Ogre::LML_NORMAL, ss.str());
-              break;
-          }
-          if (format != Ogre::PF_UNKNOWN) {
-            Ogre::TexturePtr tptr = Ogre::TextureManager::getSingleton().getByName(tex->name);
-            if (tptr.isNull()) {
-              std::vector<uint8_t> data;
-              for (auto i = tex->mips.begin(), e = tex->mips.end(); i != e; ++i) {
-                data.insert(data.end(), i->data.begin(), i->data.end());
-              }
-              Ogre::DataStreamPtr pmds(new Ogre::MemoryDataStream(&data.front(), data.size()));
-              Ogre::Image img;
-              img.loadRawData(pmds, tex->USize, tex->VSize, 1, format, 1, tex->mips.size() - 1);
-              tptr = Ogre::TextureManager::getSingleton().loadImage(tex->name, Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME, img);
-            }
-            subMesh->setMaterialName("StaticMesh/Checker");
-            subMesh->addTextureAlias("DiffuseMap", tex->name);
-            subMesh->updateMaterialUsingTextureAliases();
-          }
-        }
+        subMesh->setMaterialName(loadMaterial(mat)->getName());
       } else {
         std::stringstream ss;
         ss << sm->name.str() << ": " << "Failed to get material " << smm.material.package->GetObjectName(smm.material.index).str();
@@ -700,6 +657,85 @@ void TutorialApplication::loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshAc
   Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
   node->attachObject(ent);
   assignActorPropsToNode(sma, node);
+}
+
+Ogre::TexturePtr loadTexture(std::shared_ptr<l2p::UTexture> texture) {
+  if (texture && texture->mips.size() > 0) {
+    Ogre::PixelFormat format = Ogre::PF_UNKNOWN;
+    switch (texture->Format) {
+      case l2p::UTexture::TEXF_DXT1:
+        format = Ogre::PF_DXT1;
+        break;
+      case l2p::UTexture::TEXF_DXT3:
+        format = Ogre::PF_DXT3;
+        break;
+      case l2p::UTexture::TEXF_DXT5:
+        format = Ogre::PF_DXT5;
+        break;
+      case l2p::UTexture::TEXF_RGBA8:
+        format = Ogre::PF_R8G8B8A8;
+        break;
+      default:
+        std::stringstream ss;
+        ss << texture->GetPath() << ": " << "Unknown texture format " << texture->Format;
+        Ogre::LogManager::getSingleton().logMessage(Ogre::LML_NORMAL, ss.str());
+        break;
+    }
+    if (format != Ogre::PF_UNKNOWN) {
+      Ogre::TexturePtr tptr = Ogre::TextureManager::getSingleton().getByName(texture->GetPath());
+      if (tptr.isNull()) {
+        std::vector<uint8_t> data;
+        for (auto i = texture->mips.begin(), e = texture->mips.end(); i != e; ++i) {
+          data.insert(data.end(), i->data.begin(), i->data.end());
+        }
+        Ogre::DataStreamPtr pmds(new Ogre::MemoryDataStream(&data.front(), data.size()));
+        Ogre::Image img;
+        img.loadRawData(pmds, texture->USize, texture->VSize, 1, format, 1, texture->mips.size() - 1);
+        tptr = Ogre::TextureManager::getSingleton().loadImage(texture->GetPath(), Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME, img);
+      }
+      return tptr;
+    }
+  }
+  return Ogre::TexturePtr(nullptr);
+}
+
+Ogre::MaterialPtr TutorialApplication::loadMaterial(std::shared_ptr<l2p::UMaterial> mat) {
+  // See if we have already generated an Ogre material for this UE material.
+  Ogre::MaterialPtr material = Ogre::MaterialManager::getSingleton().getByName(mat->GetPath());
+  if (!material.isNull())
+    return material;
+
+  // Generate an Ogre material.
+  material = Ogre::MaterialManager::getSingleton().create(mat->GetPath(), "General");
+  if (std::shared_ptr<l2p::UShader> shader = std::dynamic_pointer_cast<l2p::UShader>(mat)) {
+    Ogre::TexturePtr diffuse_map = loadTexture(shader->Diffuse);
+    if (!diffuse_map.isNull()) {
+      Ogre::Pass *pass = material->getTechnique(0)->getPass(0);
+      pass->createTextureUnitState()->setTexture(diffuse_map);
+      if (  shader->OutputBlending == l2p::UShader::OB_Masked
+         || shader->AlphaTest) {
+        pass->setAlphaRejectSettings(Ogre::CMPF_GREATER_EQUAL, shader->AlphaRef, true);
+      }
+      if (shader->TreatAsTwoSided || shader->TwoSided) {
+        pass->setCullingMode(Ogre::CULL_NONE);
+      }
+      return material;
+    }
+  } else if (std::shared_ptr<l2p::UTexture> tex = std::dynamic_pointer_cast<l2p::UTexture>(mat)) {
+    Ogre::TexturePtr diffuse_map = loadTexture(tex);
+    if (!diffuse_map.isNull()) {
+      Ogre::Pass *pass = material->getTechnique(0)->getPass(0);
+      pass->createTextureUnitState()->setTexture(diffuse_map);
+      // TODO: Figure out how to apply alpha correctly.
+      if (tex->bTwoSided) {
+        pass->setCullingMode(Ogre::CULL_NONE);
+      }
+      return material;
+    }
+  }
+
+  // Load fallback material.
+  return Ogre::MaterialManager::getSingleton().getByName("StaticMesh/Checker");
 }
 
 struct Node {
