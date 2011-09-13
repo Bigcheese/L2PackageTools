@@ -14,6 +14,7 @@
 #ifndef L2PACKAGE_PACKAGE_H
 #define L2PACKAGE_PACKAGE_H
 
+#include "l2p/PackedEndian.h"
 #include "l2p/StringRef.h"
 
 #include "boost/iostreams/filter/symmetric.hpp"
@@ -219,22 +220,43 @@ template<class ExtractSizeAsT, class ExtractElementAsT, class StoreToT>
 struct ExtractArrayHelper {
   StoreToT &storeTo;
   ExtractArrayHelper(StoreToT &st) : storeTo(st) {}
+
+  template<class IStreamT>
+  IStreamT &read(IStreamT &is) {
+    ExtractSizeAsT size_val;
+    is >> size_val;
+    int32_t size = size_val;
+    storeTo.reserve(size);
+    for (int32_t i = 0; i < size; ++i) {
+      ExtractElementAsT element;
+      is >> element;
+      storeTo.push_back(element);
+    }
+    return is;
+  }
+};
+
+template<class ExtractSizeAsT, class StoreToT>
+struct ExtractArrayHelper<ExtractSizeAsT, ulittle8_t, StoreToT> {
+  StoreToT &storeTo;
+  ExtractArrayHelper(StoreToT &st) : storeTo(st) {}
+
+  template<class IStreamT>
+  IStreamT &read(IStreamT &is) {
+    ExtractSizeAsT size_val;
+    is >> size_val;
+    int32_t size = size_val;
+    storeTo.resize(size);
+    static_cast<std::istream&>(is).read(reinterpret_cast<char*>(&storeTo.front()), size);
+    return is;
+  }
 };
 
 template<class ExtractSizeAsT, class ExtractElementAsT, class StoreToT, class IStreamT>
 IStreamT &operator >>(IStreamT &is, ExtractArrayHelper< ExtractSizeAsT
                                                       , ExtractElementAsT
                                                       , StoreToT> &eah) {
-  ExtractSizeAsT size_val;
-  is >> size_val;
-  int32_t size = size_val;
-  eah.storeTo.reserve(size);
-  for (int32_t i = 0; i < size; ++i) {
-    ExtractElementAsT element;
-    is >> element;
-    eah.storeTo.push_back(element);
-  }
-  return is;
+  return eah.read(is);
 }
 
 template<class ExtractSizeAsT, class ExtractElementAsT, class StoreToT>

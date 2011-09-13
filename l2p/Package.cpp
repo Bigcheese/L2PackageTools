@@ -12,7 +12,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "l2p/Package.h"
-#include "l2p/PackedEndian.h"
 #include "l2p/UObject.h"
 
 #include "boost/filesystem.hpp"
