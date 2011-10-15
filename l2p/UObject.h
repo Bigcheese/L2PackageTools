@@ -208,6 +208,10 @@ struct Scale {
   }
 };
 
+struct Matrix {
+  float m[16];
+};
+
 struct Property {
   Name name;
   union {
@@ -308,7 +312,17 @@ struct Property {
         pa >> p.vector_value;
       else if (p.struct_name == "Rotator")
         pa >> p.rotator_value;
-      else
+      else if (p.struct_name == "TerrainLayer") {
+        std::unordered_map<std::string, Property> pmap;
+        while (true) {
+          Property ap;
+          pa >> ap;
+          if (ap.name == "None")
+            break;
+          pmap[ap.name] = std::move(ap);
+        }
+        p.property_list.push_back(std::move(pmap));
+      } else
         static_cast<std::istream&>(pa).seekg(p.size, std::ios::cur);
       break;
     case 0x0C:
@@ -1073,6 +1087,30 @@ class AStaticMeshActor : public AActor {};
 
 class AInfo : public AActor {};
 
+struct TerrainLayer {
+  ObjectRef<UTexture> Texture;
+  ObjectRef<UTexture> AlphaMap;
+  float UScale;
+  float VScale;
+  float UPan;
+  float VPan;
+  enum ETextureMapAxis {
+    TEXMAPAXIS_XY,
+    TEXMAPAXIS_XZ,
+    TEXMAPAXIS_YZ,
+  } TextureMapAxis;
+  float TextureRotation;
+  Rotator LayerRotation;
+  Matrix TerrainMatrix;
+  float KFriction;
+  float Krestitution;
+  ObjectRef<UTexture> LayerWeightMap;
+  Vector Scale_;
+  Vector ToWorld[4];
+  Vector ToMaskmap[4];
+  bool bUseAlpha;
+};
+
 class ATerrainInfo : public AInfo {
 public:
   ObjectRef<UTexture> terrain_map;
@@ -1081,6 +1119,7 @@ public:
   boost::dynamic_bitset<uint8_t> edge_turn_bitmap;
   int32_t map_x;
   int32_t map_y;
+  std::vector<TerrainLayer> Layers;
 
   virtual bool SetProperty(const Property &p) {
     if (AInfo::SetProperty(p))
@@ -1104,6 +1143,38 @@ public:
       return true;
     } else if (p.name == "MapY") {
       map_y = p.int32_t_value;
+      return true;
+    } else if (p.name == "Layers") {
+      TerrainLayer tl;
+      auto itter = p.property_list[0].find("Texture");
+      if (itter != p.property_list[0].end()) {
+        tl.Texture.index = itter->second.index_value;
+        tl.Texture.package = package;
+      }
+      itter = p.property_list[0].find("AlphaMap");
+      if (itter != p.property_list[0].end()) {
+        tl.AlphaMap.index = itter->second.index_value;
+        tl.AlphaMap.package = package;
+      }
+      itter = p.property_list[0].find("UScale");
+      if (itter != p.property_list[0].end())
+        tl.UScale = itter->second.float_value;
+      itter = p.property_list[0].find("VScale");
+      if (itter != p.property_list[0].end())
+        tl.VScale = itter->second.float_value;
+      itter = p.property_list[0].find("UPan");
+      if (itter != p.property_list[0].end())
+        tl.UPan = itter->second.float_value;
+      itter = p.property_list[0].find("VPan");
+      if (itter != p.property_list[0].end())
+        tl.VPan = itter->second.float_value;
+      itter = p.property_list[0].find("TextureMapAxis");
+      if (itter != p.property_list[0].end())
+        tl.TextureMapAxis = static_cast<TerrainLayer::ETextureMapAxis>(itter->second.uint8_t_value);
+      itter = p.property_list[0].find("TextureRotation");
+      if (itter != p.property_list[0].end())
+        tl.TextureRotation = itter->second.float_value;
+      Layers.push_back(std::move(tl));
       return true;
     }
 

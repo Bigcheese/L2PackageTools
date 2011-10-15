@@ -36,6 +36,46 @@ Ogre::AxisAlignedBox ogre_cast(const l2p::Box &b) {
   return Ogre::AxisAlignedBox(ogre_cast(b.min), ogre_cast(b.max));
 }
 
+Ogre::TexturePtr loadTexture(std::shared_ptr<l2p::UTexture> texture) {
+  if (texture && texture->mips.size() > 0) {
+    Ogre::PixelFormat format = Ogre::PF_UNKNOWN;
+    switch (texture->Format) {
+      case l2p::UTexture::TEXF_DXT1:
+        format = Ogre::PF_DXT1;
+        break;
+      case l2p::UTexture::TEXF_DXT3:
+        format = Ogre::PF_DXT3;
+        break;
+      case l2p::UTexture::TEXF_DXT5:
+        format = Ogre::PF_DXT5;
+        break;
+      case l2p::UTexture::TEXF_RGBA8:
+        format = Ogre::PF_R8G8B8A8;
+        break;
+      default:
+        std::stringstream ss;
+        ss << texture->GetPath() << ": " << "Unknown texture format " << texture->Format;
+        Ogre::LogManager::getSingleton().logMessage(Ogre::LML_NORMAL, ss.str());
+        break;
+    }
+    if (format != Ogre::PF_UNKNOWN) {
+      Ogre::TexturePtr tptr = Ogre::TextureManager::getSingleton().getByName(texture->GetPath());
+      if (tptr.isNull()) {
+        std::vector<uint8_t> data;
+        for (auto i = texture->mips.begin(), e = texture->mips.end(); i != e; ++i) {
+          data.insert(data.end(), i->data.begin(), i->data.end());
+        }
+        Ogre::DataStreamPtr pmds(new Ogre::MemoryDataStream(&data.front(), data.size()));
+        Ogre::Image img;
+        img.loadRawData(pmds, texture->USize, texture->VSize, 1, format, 1, texture->mips.size() - 1);
+        tptr = Ogre::TextureManager::getSingleton().loadImage(texture->GetPath(), Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME, img);
+      }
+      return tptr;
+    }
+  }
+  return Ogre::TexturePtr(nullptr);
+}
+
 //-------------------------------------------------------------------------------------
 TutorialApplication::TutorialApplication(void)
 {
@@ -303,13 +343,12 @@ Ogre::SceneNode *TutorialApplication::loadBSP(std::shared_ptr<l2p::UModel> m, bo
 struct BufferVert {
   Ogre::Vector3 position;
   Ogre::Vector3 normal;
-  Ogre::RGBA color;
+  Ogre::Vector2 texcoord;
 };
 
 void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
   l2p::Name name = ti->package->name;
   std::vector<BufferVert> vertex_buffer;
-  std::vector<Ogre::RGBA> color_buffer;
   std::vector<uint32_t> index_buffer;
   if (ti->terrain_map->mips.size() == 0)
     return;
@@ -328,10 +367,8 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
   float min_hight = (0.f * (scale.z / 256.f)) + translation.z;
 
   vertex_buffer.reserve(USize * VSize);
-  color_buffer.reserve(USize * VSize);
   Ogre::AxisAlignedBox box;
   Ogre::RenderSystem *rs = Ogre::Root::getSingleton().getRenderSystem();
-  float sealevel = -3770;
   for (int y = 0; y < VSize; ++y) {
     for (int x = 0; x < USize; ++x) {
       Ogre::Vector3 v( (x * scale.x) + translation.x
@@ -339,14 +376,7 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
                      , (height_map[(y * USize) + x] * (scale.z / 256.f)) + translation.z
                      );
       box.merge(v);
-      BufferVert bv = {v, Ogre::Vector3(0.f, 0.f, 0.f), 0};
-      float val = -((v.z - min_hight)/(min_hight - max_hight));
-      Ogre::ColourValue cv;
-      if (v.z < sealevel)
-        cv = Ogre::ColourValue(0.f, 0.f, 1.f) * val;
-      else
-        cv = Ogre::ColourValue(0.f, 1.f, 0.f) * val;
-      rs->convertColourValue(cv, &bv.color);
+      BufferVert bv = {v, Ogre::Vector3(0.f, 0.f, 0.f), Ogre::Vector2(float(x) / (USize), float(y) / (VSize))};
       vertex_buffer.push_back(bv);
     }
   }
@@ -408,14 +438,7 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
                          , (tm->mips[0].getAs<l2p::ulittle16_t>()[x] * (scale.z / 256.f)) + translation.z
                          );
           box.merge(v);
-          BufferVert bv = {v, Ogre::Vector3(0.f, 0.f, 0.f), 0};
-          float val = -((v.z - min_hight)/(min_hight - max_hight));
-          Ogre::ColourValue cv;
-          if (v.z < sealevel)
-            cv = Ogre::ColourValue(0.f, 0.f, 1.f) * val;
-          else
-            cv = Ogre::ColourValue(0.f, 1.f, 0.f) * val;
-          rs->convertColourValue(cv, &bv.color);
+          BufferVert bv = {v, Ogre::Vector3(0.f, 0.f, 0.f), Ogre::Vector2(float(x) / (USize), float(y) / (VSize))};
           vertex_buffer.push_back(bv);
 
           // First part of quad.
@@ -446,14 +469,7 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
                          , (tm->mips[0].getAs<l2p::ulittle16_t>()[y * USize] * (scale.z / 256.f)) + translation.z
                          );
           box.merge(v);
-          BufferVert bv = {v, Ogre::Vector3(0.f, 0.f, 0.f), 0};
-          float val = -((v.z - min_hight)/(min_hight - max_hight));
-          Ogre::ColourValue cv;
-          if (v.z < sealevel)
-            cv = Ogre::ColourValue(0.f, 0.f, 1.f) * val;
-          else
-            cv = Ogre::ColourValue(0.f, 1.f, 0.f) * val;
-          rs->convertColourValue(cv, &bv.color);
+          BufferVert bv = {v, Ogre::Vector3(0.f, 0.f, 0.f), Ogre::Vector2(float(x) / (USize), float(y) / (VSize))};
           vertex_buffer.push_back(bv);
 
           // First part of quad.
@@ -484,14 +500,7 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
                        , (tm->mips[0].getAs<l2p::ulittle16_t>()[0] * (scale.z / 256.f)) + translation.z
                        );
         box.merge(v);
-        BufferVert bv = {v, Ogre::Vector3(0.f, 0.f, 0.f), 0};
-        float val = -((v.z - min_hight)/(min_hight - max_hight));
-        Ogre::ColourValue cv;
-        if (v.z < sealevel)
-          cv = Ogre::ColourValue(0.f, 0.f, 1.f) * val;
-        else
-          cv = Ogre::ColourValue(0.f, 1.f, 0.f) * val;
-        rs->convertColourValue(cv, &bv.color);
+        BufferVert bv = {v, Ogre::Vector3(0.f, 0.f, 0.f), Ogre::Vector2(float(x) / (USize), float(y) / (VSize))};
         vertex_buffer.push_back(bv);
 
         // First part of quad.
@@ -536,8 +545,8 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
   offset += Ogre::VertexElement::getTypeSize(Ogre::VET_FLOAT3);
   decl->addElement(0, offset, Ogre::VET_FLOAT3, Ogre::VES_NORMAL);
   offset += Ogre::VertexElement::getTypeSize(Ogre::VET_FLOAT3);
-  decl->addElement(0, offset, Ogre::VET_COLOUR, Ogre::VES_DIFFUSE);
-  offset += Ogre::VertexElement::getTypeSize(Ogre::VET_COLOUR);
+  decl->addElement(0, offset, Ogre::VET_FLOAT2, Ogre::VES_TEXTURE_COORDINATES);
+  offset += Ogre::VertexElement::getTypeSize(Ogre::VET_FLOAT2);
 
   Ogre::HardwareVertexBufferSharedPtr vbuf =
     Ogre::HardwareBufferManager::getSingleton().createVertexBuffer(
@@ -566,13 +575,11 @@ void TutorialApplication::loadTerrain(std::shared_ptr<l2p::ATerrainInfo> ti) {
 
   mesh->load();
 
-  Ogre::MaterialPtr mat = Ogre::MaterialManager::getSingleton().create(
-    "Test/VertColor",
-    Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME);
-  mat->getTechnique(0)->getPass(0)->setVertexColourTracking(Ogre::TVC_AMBIENT);
+  Ogre::MaterialPtr mat = Ogre::MaterialManager::getSingleton().create(ti->GetPath(), "General");
+  mat->getTechnique(0)->getPass(0)->createTextureUnitState()->setTexture(loadTexture(ti->Layers[0].Texture));
 
   Ogre::Entity *ent = mSceneMgr->createEntity(Ogre::String(name) + Ogre::String(ti->name) + "E", Ogre::String(name) + Ogre::String(ti->name));
-  ent->setMaterialName("Test/VertColor");
+  ent->setMaterial(mat);
   Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
   node->attachObject(ent);
 }
@@ -682,46 +689,6 @@ void TutorialApplication::loadStaticMeshActor(std::shared_ptr<l2p::AStaticMeshAc
   Ogre::SceneNode *node = mUnrealCordNode->createChildSceneNode();
   node->attachObject(ent);
   assignActorPropsToNode(sma, node);
-}
-
-Ogre::TexturePtr loadTexture(std::shared_ptr<l2p::UTexture> texture) {
-  if (texture && texture->mips.size() > 0) {
-    Ogre::PixelFormat format = Ogre::PF_UNKNOWN;
-    switch (texture->Format) {
-      case l2p::UTexture::TEXF_DXT1:
-        format = Ogre::PF_DXT1;
-        break;
-      case l2p::UTexture::TEXF_DXT3:
-        format = Ogre::PF_DXT3;
-        break;
-      case l2p::UTexture::TEXF_DXT5:
-        format = Ogre::PF_DXT5;
-        break;
-      case l2p::UTexture::TEXF_RGBA8:
-        format = Ogre::PF_R8G8B8A8;
-        break;
-      default:
-        std::stringstream ss;
-        ss << texture->GetPath() << ": " << "Unknown texture format " << texture->Format;
-        Ogre::LogManager::getSingleton().logMessage(Ogre::LML_NORMAL, ss.str());
-        break;
-    }
-    if (format != Ogre::PF_UNKNOWN) {
-      Ogre::TexturePtr tptr = Ogre::TextureManager::getSingleton().getByName(texture->GetPath());
-      if (tptr.isNull()) {
-        std::vector<uint8_t> data;
-        for (auto i = texture->mips.begin(), e = texture->mips.end(); i != e; ++i) {
-          data.insert(data.end(), i->data.begin(), i->data.end());
-        }
-        Ogre::DataStreamPtr pmds(new Ogre::MemoryDataStream(&data.front(), data.size()));
-        Ogre::Image img;
-        img.loadRawData(pmds, texture->USize, texture->VSize, 1, format, 1, texture->mips.size() - 1);
-        tptr = Ogre::TextureManager::getSingleton().loadImage(texture->GetPath(), Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME, img);
-      }
-      return tptr;
-    }
-  }
-  return Ogre::TexturePtr(nullptr);
 }
 
 Ogre::MaterialPtr TutorialApplication::loadMaterial(std::shared_ptr<l2p::UMaterial> mat) {

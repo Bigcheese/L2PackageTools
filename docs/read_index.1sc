@@ -1,0 +1,34 @@
+//===- read_index.1sc - Read a Compact Index from the cursor --------------===//
+//
+// L2PackageTools
+//
+// This file is distributed under the Simplified BSD License. See LICENSE.TXT
+// for details.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file reads a compact index from the current cursor position.
+//
+//===----------------------------------------------------------------------===//
+
+int64 addr = GetCursorPos();
+byte b = ReadByte(addr++);
+int neg = b & (1 << 7);
+int index = b & 0x3f;
+
+if (b & (1 << 6)) {
+    int shift = 6;
+    int data;
+    do {
+        b = ReadByte(addr++);
+        data = b & 0x7f;
+        data <<= shift;
+        index |= data;
+        shift += 7;
+    } while ((b & (1 << 7)) && (shift < 32));
+}
+
+if (neg)
+    index = -index;
+
+Printf("Index = %d\n", index);

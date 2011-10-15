@@ -233,6 +233,25 @@ typedef struct {
     byte sheer_axis;
 } Scale;
 
+typedef struct {
+    float m[16];
+} Matrix;
+
+typedef struct {
+    char huh0[2];
+    FClass material;
+    char huh1[3];
+    FClass alpha_map;
+    char huh2[3];
+    float uscale;
+    char huh3[3];
+    float vscale;
+    char huh4[3];
+    float upan;
+    char huh5[3];
+    float vpan;
+} TerrainLayer;
+
 struct Property;
 
 typedef struct {
@@ -273,11 +292,13 @@ typedef struct {
         local int lstart = FTell();
         Index array_size;
         local int i;
-        for (i = 0; i < IndexReadInt(array_size); ++i) {
-            while (1) {
-                Property value;
-                if (FNameRead(value.name) == "None")
-                    break;
+        if (FNameRead(name) == "Materials") {
+            for (i = 0; i < IndexReadInt(array_size); ++i) {
+                while (1) {
+                    Property value;
+                    if (FNameRead(value.name) == "None")
+                        break;
+                }
             }
         }
         local int leftoverstuff = size_left - (FTell() - lstart);
@@ -294,6 +315,14 @@ typedef struct {
         } else if (FNameRead(struct_name) == "Scale") {
             Scale value;
             size_left -= sizeof(Scale);
+        } else if (FNameRead(struct_name) == "TerrainLayer") {
+            local int tlstart = FTell();
+            while (1) {
+                Property value;
+                if (FNameRead(value.name) == "None")
+                    break;
+            }
+            size_left -= FTell() - tlstart;
         }
         if (size_left > 0)
             char unkvalue[size_left];
@@ -621,7 +650,7 @@ typedef struct (Export &e) {
             break;
     }
 
-    if (FClassRead(e.class) == "Core.Class'Model'") {
+    /*if (FClassRead(e.class) == "Core.Class'Model'") {
         Box bounding_box;
         Sphere bounding_sphere;
         VectorArray vectors;
@@ -693,7 +722,7 @@ typedef struct (Export &e) {
         Index unknown_index;
         char unk01[2];
         kDOP kdop[35];
-    }
+    }*/
 
     local int length = FTell() - start_pos;
     local int leftover = IndexReadInt(export_table[i].serial_size) - length;
