@@ -252,6 +252,22 @@ struct ExtractArrayHelper<ExtractSizeAsT, ulittle8_t, StoreToT> {
   }
 };
 
+template<class ExtractSizeAsT, class PESIT, endianness PESIE, alignment PESIA, class StoreToT>
+struct ExtractArrayHelper<ExtractSizeAsT, detail::packed_endian_specific_integral<PESIT, PESIE, PESIA>, StoreToT> {
+  StoreToT &storeTo;
+  ExtractArrayHelper(StoreToT &st) : storeTo(st) {}
+
+  template<class IStreamT>
+  IStreamT &read(IStreamT &is) {
+    ExtractSizeAsT size_val;
+    is >> size_val;
+    int32_t size = size_val;
+    storeTo.resize(size);
+    static_cast<std::istream&>(is).read(reinterpret_cast<char*>(&storeTo.front()), size * sizeof(PESIT));
+    return is;
+  }
+};
+
 template<class ExtractSizeAsT, class ExtractElementAsT, class StoreToT, class IStreamT>
 IStreamT &operator >>(IStreamT &is, ExtractArrayHelper< ExtractSizeAsT
                                                       , ExtractElementAsT
